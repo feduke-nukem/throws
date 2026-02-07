@@ -196,10 +196,10 @@ class _FunctionCollector extends RecursiveAstVisitor<void> {
   @override
   void visitFunctionDeclaration(FunctionDeclaration node) {
     final summary = _FunctionSummary(
-        nameToken: node.name,
-        body: node.functionExpression.body,
-        hasThrowsAnnotation: _hasThrowsAnnotationOnNode(node.metadata),
-      );
+      nameToken: node.name,
+      body: node.functionExpression.body,
+      hasThrowsAnnotation: _hasThrowsAnnotationOnNode(node.metadata),
+    );
     summaries.add(summary);
     final element = node.declaredFragment?.element;
     if (element != null) {
@@ -211,10 +211,10 @@ class _FunctionCollector extends RecursiveAstVisitor<void> {
   @override
   void visitMethodDeclaration(MethodDeclaration node) {
     final summary = _FunctionSummary(
-        nameToken: node.name,
-        body: node.body,
-        hasThrowsAnnotation: _hasThrowsAnnotationOnNode(node.metadata),
-      );
+      nameToken: node.name,
+      body: node.body,
+      hasThrowsAnnotation: _hasThrowsAnnotationOnNode(node.metadata),
+    );
     summaries.add(summary);
     final element = node.declaredFragment?.element;
     if (element != null) {
