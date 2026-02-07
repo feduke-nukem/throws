@@ -1,0 +1,10 @@
+include: package:lints/recommended.yaml
+plugins:
+  throws_plugin:
+    path: ../../throws_plugin
+    diagnostics:
+      missing_throws_annotation: error
+      unhandled_throws_call: error
+      unused_throws_annotation: error
+formatter:
+  trailing_commas: preserve

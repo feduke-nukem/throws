@@ -1,0 +1,10 @@
+name: throws
+description: An annotation for documenting and enforcing throwing functions.
+version: 1.0.0
+# repository: https://github.com/my_org/my_repo
+
+environment:
+  sdk: ^3.10.0
+
+dev_dependencies:
+  lints: ^6.0.0
