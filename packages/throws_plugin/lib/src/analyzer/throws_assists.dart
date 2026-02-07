@@ -5,6 +5,7 @@ import 'package:analyzer/dart/element/element.dart';
 import 'package:analyzer_plugin/utilities/assist/assist.dart';
 import 'package:analyzer_plugin/utilities/change_builder/change_builder_core.dart';
 import 'package:analyzer_plugin/utilities/range_factory.dart';
+import 'package:throws_plugin/src/analyzer/sdk_throws_map.dart';
 
 class AddThrowsAnnotationAssist extends ResolvedCorrectionProducer {
   static const AssistKind _assistKind = AssistKind(
@@ -40,10 +41,28 @@ class AddThrowsAnnotationAssist extends ResolvedCorrectionProducer {
         return;
       }
 
+      final unit = functionNode.thisOrAncestorOfType<CompilationUnit>();
+      if (unit == null) {
+        return;
+      }
+      final localInfo = _collectLocalThrowingInfo(unit);
+      final expectedErrors = _collectExpectedErrors(
+        body,
+        localExpectedErrorsByElement: localInfo.expectedErrorsByElement,
+      );
+
       final offset = _annotationInsertOffset(functionNode, metadata);
       await builder.addDartFileEdit(file, (builder) {
         builder.addInsertion(offset, (builder) {
-          builder.write('@throws');
+          if (expectedErrors.isNotEmpty) {
+            builder.write(
+              '@Throws(\'reason\', {',
+            );
+            builder.write(expectedErrors.join(', '));
+            builder.write('})');
+          } else {
+            builder.write('@throws');
+          }
           builder.writeln();
         });
       });
@@ -205,8 +224,11 @@ List<String>? _expressionExpectedErrors(
   Expression expression,
   CompilationUnit unit,
 ) {
+  final localInfo = _collectLocalThrowingInfo(unit);
   final finder = _ThrowsInvocationFinder(
     _collectAnnotatedTopLevelFunctions(unit),
+    localInfo.elements,
+    localInfo.expectedErrorsByElement,
   );
   expression.accept(finder);
   return finder.expectedErrors;
@@ -292,13 +314,17 @@ String? _annotationName(Annotation annotation) {
   return null;
 }
 
-bool _isThrowsAnnotated(Element? element) {
+bool _isThrowsAnnotatedOrSdk(Element? element) {
   final executable = element is ExecutableElement ? element : null;
   if (executable == null) {
     return false;
   }
 
-  return executable.metadata.annotations.any(_isThrowsAnnotation);
+  if (executable.metadata.annotations.any(_isThrowsAnnotation)) {
+    return true;
+  }
+
+  return isSdkThrowingElement(executable);
 }
 
 bool _isThrowsAnnotation(ElementAnnotation annotation) {
@@ -314,6 +340,133 @@ bool _needsThrowsAnnotation(FunctionBody body) {
   final visitor = _ThrowsBodyVisitor();
   body.accept(visitor);
   return visitor.hasUnhandledThrow || visitor.hasUnhandledThrowingCall;
+}
+
+List<String> _collectExpectedErrors(
+  FunctionBody body, {
+  required Map<Element, List<String>> localExpectedErrorsByElement,
+}) {
+  final collector = _ThrowsExpectedErrorsCollector(
+    localExpectedErrorsByElement: localExpectedErrorsByElement,
+  );
+  body.accept(collector);
+  return collector.expectedErrors;
+}
+
+class _ThrowsExpectedErrorsCollector extends RecursiveAstVisitor<void> {
+  final Set<String> _errors = {};
+  final Map<Element, List<String>> _localExpectedErrorsByElement;
+
+  _ThrowsExpectedErrorsCollector({
+    required Map<Element, List<String>> localExpectedErrorsByElement,
+  }) : _localExpectedErrorsByElement = localExpectedErrorsByElement;
+
+  List<String> get expectedErrors {
+    final errors = _errors.toList();
+    errors.sort();
+    return errors;
+  }
+
+  @override
+  void visitFunctionExpression(FunctionExpression node) {
+    // Skip nested functions.
+  }
+
+  @override
+  void visitFunctionDeclaration(FunctionDeclaration node) {
+    // Skip nested functions.
+  }
+
+  @override
+  void visitMethodDeclaration(MethodDeclaration node) {
+    // Skip nested methods.
+  }
+
+  @override
+  void visitMethodInvocation(MethodInvocation node) {
+    _maybeCollect(node, node.methodName.element);
+    super.visitMethodInvocation(node);
+  }
+
+  @override
+  void visitFunctionExpressionInvocation(FunctionExpressionInvocation node) {
+    _maybeCollect(node, node.element);
+    super.visitFunctionExpressionInvocation(node);
+  }
+
+  @override
+  void visitInstanceCreationExpression(InstanceCreationExpression node) {
+    _maybeCollect(node, node.constructorName.element);
+    super.visitInstanceCreationExpression(node);
+  }
+
+  @override
+  void visitPropertyAccess(PropertyAccess node) {
+    _maybeCollect(node, node.propertyName.element);
+    super.visitPropertyAccess(node);
+  }
+
+  @override
+  void visitPrefixedIdentifier(PrefixedIdentifier node) {
+    _maybeCollect(node, node.identifier.element);
+    super.visitPrefixedIdentifier(node);
+  }
+
+  void _maybeCollect(AstNode node, Element? element) {
+    if (_isHandledByTryCatch(node)) {
+      return;
+    }
+    final expected = _expectedErrorsFromElementOrSdk(element);
+    if (expected != null && expected.isNotEmpty) {
+      _errors.addAll(expected);
+      return;
+    }
+    final base = element?.baseElement;
+    if (base == null) {
+      return;
+    }
+    final localExpected = _localExpectedErrorsByElement[base];
+    if (localExpected == null || localExpected.isEmpty) {
+      return;
+    }
+    _errors.addAll(localExpected);
+  }
+
+  bool _isHandledByTryCatch(AstNode node) {
+    AstNode? current = node.parent;
+    while (current != null) {
+      if (current is TryStatement) {
+        if (_isWithin(node, current.body) && _tryProvidesHandling(current)) {
+          return true;
+        }
+      }
+      current = current.parent;
+    }
+    return false;
+  }
+
+  bool _isWithin(AstNode node, AstNode container) {
+    return node.offset >= container.offset && node.end <= container.end;
+  }
+
+  bool _tryProvidesHandling(TryStatement statement) {
+    if (statement.catchClauses.isEmpty) {
+      return false;
+    }
+
+    for (final clause in statement.catchClauses) {
+      if (!_catchAlwaysRethrows(clause)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  bool _catchAlwaysRethrows(CatchClause clause) {
+    final visitor = _ThrowFinder();
+    clause.body.accept(visitor);
+    return visitor.foundThrow;
+  }
 }
 
 class _ThrowsBodyVisitor extends RecursiveAstVisitor<void> {
@@ -354,7 +507,7 @@ class _ThrowsBodyVisitor extends RecursiveAstVisitor<void> {
   @override
   void visitMethodInvocation(MethodInvocation node) {
     final element = node.methodName.element;
-    if (_isThrowsAnnotated(element) && !_isHandledByTryCatch(node)) {
+    if (_isThrowsAnnotatedOrSdk(element) && !_isHandledByTryCatch(node)) {
       hasUnhandledThrowingCall = true;
     }
     super.visitMethodInvocation(node);
@@ -363,7 +516,7 @@ class _ThrowsBodyVisitor extends RecursiveAstVisitor<void> {
   @override
   void visitFunctionExpressionInvocation(FunctionExpressionInvocation node) {
     final element = node.element;
-    if (_isThrowsAnnotated(element) && !_isHandledByTryCatch(node)) {
+    if (_isThrowsAnnotatedOrSdk(element) && !_isHandledByTryCatch(node)) {
       hasUnhandledThrowingCall = true;
     }
     super.visitFunctionExpressionInvocation(node);
@@ -372,10 +525,28 @@ class _ThrowsBodyVisitor extends RecursiveAstVisitor<void> {
   @override
   void visitInstanceCreationExpression(InstanceCreationExpression node) {
     final element = node.constructorName.element;
-    if (_isThrowsAnnotated(element) && !_isHandledByTryCatch(node)) {
+    if (_isThrowsAnnotatedOrSdk(element) && !_isHandledByTryCatch(node)) {
       hasUnhandledThrowingCall = true;
     }
     super.visitInstanceCreationExpression(node);
+  }
+
+  @override
+  void visitPropertyAccess(PropertyAccess node) {
+    final element = node.propertyName.element;
+    if (_isThrowsAnnotatedOrSdk(element) && !_isHandledByTryCatch(node)) {
+      hasUnhandledThrowingCall = true;
+    }
+    super.visitPropertyAccess(node);
+  }
+
+  @override
+  void visitPrefixedIdentifier(PrefixedIdentifier node) {
+    final element = node.identifier.element;
+    if (_isThrowsAnnotatedOrSdk(element) && !_isHandledByTryCatch(node)) {
+      hasUnhandledThrowingCall = true;
+    }
+    super.visitPrefixedIdentifier(node);
   }
 
   bool _isHandledByTryCatch(AstNode node) {
@@ -436,9 +607,15 @@ class _ThrowFinder extends RecursiveAstVisitor<void> {
 
 class _ThrowsInvocationFinder extends RecursiveAstVisitor<void> {
   final Map<String, List<String>> _expectedErrorsByName;
+  final Set<Element> _localThrowingElements;
+  final Map<Element, List<String>> _localExpectedErrorsByElement;
   List<String>? expectedErrors;
 
-  _ThrowsInvocationFinder(this._expectedErrorsByName);
+  _ThrowsInvocationFinder(
+    this._expectedErrorsByName,
+    this._localThrowingElements,
+    this._localExpectedErrorsByElement,
+  );
 
   @override
   void visitFunctionExpression(FunctionExpression node) {
@@ -458,8 +635,14 @@ class _ThrowsInvocationFinder extends RecursiveAstVisitor<void> {
   @override
   void visitMethodInvocation(MethodInvocation node) {
     final element = node.methodName.element;
-    if (_isThrowsAnnotated(element)) {
-      expectedErrors ??= _expectedErrorsFromElement(element) ?? const [];
+    final expected = _expectedErrorsFromElementOrSdk(element);
+    if (expected != null) {
+      expectedErrors ??= expected;
+    } else if (_isLocalThrowingElement(element)) {
+      final base = element?.baseElement;
+      expectedErrors ??= base == null
+          ? const []
+          : (_localExpectedErrorsByElement[base] ?? const []);
     } else if (_isAnnotatedTopLevelCall(node)) {
       expectedErrors ??=
           _expectedErrorsByName[node.methodName.name] ?? const [];
@@ -469,19 +652,67 @@ class _ThrowsInvocationFinder extends RecursiveAstVisitor<void> {
 
   @override
   void visitFunctionExpressionInvocation(FunctionExpressionInvocation node) {
-    if (_isThrowsAnnotated(node.element)) {
-      expectedErrors ??= _expectedErrorsFromElement(node.element) ?? const [];
+    final expected = _expectedErrorsFromElementOrSdk(node.element);
+    if (expected != null) {
+      expectedErrors ??= expected;
+    } else if (_isLocalThrowingElement(node.element)) {
+      final base = node.element?.baseElement;
+      expectedErrors ??= base == null
+          ? const []
+          : (_localExpectedErrorsByElement[base] ?? const []);
     }
     super.visitFunctionExpressionInvocation(node);
   }
 
   @override
   void visitInstanceCreationExpression(InstanceCreationExpression node) {
-    if (_isThrowsAnnotated(node.constructorName.element)) {
-      expectedErrors ??=
-          _expectedErrorsFromElement(node.constructorName.element) ?? const [];
+    final expected = _expectedErrorsFromElementOrSdk(
+      node.constructorName.element,
+    );
+    if (expected != null) {
+      expectedErrors ??= expected;
+    } else if (_isLocalThrowingElement(node.constructorName.element)) {
+      final base = node.constructorName.element?.baseElement;
+      expectedErrors ??= base == null
+          ? const []
+          : (_localExpectedErrorsByElement[base] ?? const []);
     }
     super.visitInstanceCreationExpression(node);
+  }
+
+  @override
+  void visitPropertyAccess(PropertyAccess node) {
+    final expected = _expectedErrorsFromElementOrSdk(node.propertyName.element);
+    if (expected != null) {
+      expectedErrors ??= expected;
+    } else if (_isLocalThrowingElement(node.propertyName.element)) {
+      final base = node.propertyName.element?.baseElement;
+      expectedErrors ??= base == null
+          ? const []
+          : (_localExpectedErrorsByElement[base] ?? const []);
+    }
+    super.visitPropertyAccess(node);
+  }
+
+  @override
+  void visitPrefixedIdentifier(PrefixedIdentifier node) {
+    final expected = _expectedErrorsFromElementOrSdk(node.identifier.element);
+    if (expected != null) {
+      expectedErrors ??= expected;
+    } else if (_isLocalThrowingElement(node.identifier.element)) {
+      final base = node.identifier.element?.baseElement;
+      expectedErrors ??= base == null
+          ? const []
+          : (_localExpectedErrorsByElement[base] ?? const []);
+    }
+    super.visitPrefixedIdentifier(node);
+  }
+
+  bool _isLocalThrowingElement(Element? element) {
+    if (element == null) {
+      return false;
+    }
+    return _localThrowingElements.contains(element.baseElement);
   }
 
   bool _isAnnotatedTopLevelCall(MethodInvocation node) {
@@ -506,6 +737,57 @@ Map<String, List<String>> _collectAnnotatedTopLevelFunctions(
     }
   }
   return names;
+}
+
+class _LocalThrowingInfo {
+  final Set<Element> elements;
+  final Map<Element, List<String>> expectedErrorsByElement;
+
+  _LocalThrowingInfo(this.elements, this.expectedErrorsByElement);
+}
+
+_LocalThrowingInfo _collectLocalThrowingInfo(CompilationUnit unit) {
+  final elements = <Element>{};
+  final expectedErrorsByElement = <Element, List<String>>{};
+  for (final declaration in unit.declarations) {
+    if (declaration is FunctionDeclaration) {
+      final body = declaration.functionExpression.body;
+      final visitor = _ThrowsBodyVisitor();
+      body.accept(visitor);
+      if (visitor.hasUnhandledThrow || visitor.hasUnhandledThrowingCall) {
+        final element = declaration.declaredFragment?.element;
+        if (element != null) {
+          final base = element.baseElement;
+          elements.add(base);
+          final expected = _collectExpectedErrors(
+            body,
+            localExpectedErrorsByElement: const {},
+          );
+          expectedErrorsByElement[base] = expected;
+        }
+      }
+    } else if (declaration is ClassDeclaration) {
+      for (final member in declaration.members) {
+        if (member is MethodDeclaration) {
+          final visitor = _ThrowsBodyVisitor();
+          member.body.accept(visitor);
+          if (visitor.hasUnhandledThrow || visitor.hasUnhandledThrowingCall) {
+            final element = member.declaredFragment?.element;
+            if (element != null) {
+              final base = element.baseElement;
+              elements.add(base);
+              final expected = _collectExpectedErrors(
+                member.body,
+                localExpectedErrorsByElement: const {},
+              );
+              expectedErrorsByElement[base] = expected;
+            }
+          }
+        }
+      }
+    }
+  }
+  return _LocalThrowingInfo(elements, expectedErrorsByElement);
 }
 
 List<String> _expectedErrorsFromMetadata(List<Annotation> metadata) {
@@ -562,7 +844,7 @@ String? _typeNameFromExpression(Expression expression) {
   return null;
 }
 
-List<String>? _expectedErrorsFromElement(Element? element) {
+List<String>? _expectedErrorsFromElementOrSdk(Element? element) {
   final executable = element is ExecutableElement ? element : null;
   if (executable == null) {
     return null;
@@ -587,5 +869,6 @@ List<String>? _expectedErrorsFromElement(Element? element) {
       return names;
     }
   }
-  return null;
+
+  return sdkThrowsForElement(executable);
 }

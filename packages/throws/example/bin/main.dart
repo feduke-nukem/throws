@@ -27,4 +27,11 @@ void main() {
   print(parsePositiveInt('42'));
   print(safeParsePositiveInt('oops'));
   print(delegatedParse('7'));
+  getSingle();
+}
+
+int getSingle() {
+  final list = [];
+
+  return list.single;
 }

@@ -1,0 +1,10 @@
+# Throws analyzer config
+# Extend/override known throwing members.
+# Keys are "<library-uri>.<enclosing>.<member>" or "<library-uri>.<member>" for top-level.
+# Example: dart:core.Iterable.single
+
+throws:
+  map:
+    dart:core.Iterable.single:
+      - ArgumentError
+      - AssertionError

@@ -10,6 +10,7 @@ dependencies:
   analysis_server_plugin: ^0.3.0
   analyzer_plugin: ^0.13.0
   analyzer: ^8.0.0
+  yaml: ^3.1.2
   throws:
     path: ../throws
 

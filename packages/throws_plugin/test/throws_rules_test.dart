@@ -71,6 +71,15 @@ int f() {
 }''',
     );
   }
+
+  void test_reports_sdk_throwing_call_without_annotation() async {
+    await assertDiagnostics(
+      r'''int parseIt(String input) {
+  return int.parse(input);
+}''',
+      [lint(4, 7)],
+    );
+  }
 }
 
 @reflectiveTest
@@ -159,6 +168,43 @@ void boom() {
 void caller() {
   boom();
 }''',
+    );
+  }
+
+  void test_reports_sdk_throwing_call() async {
+    await assertDiagnostics(
+      r'''int parseIt(String input) {
+  return int.parse(input);
+}''',
+      [lint(41, 5)],
+    );
+  }
+
+  void test_reports_throws_getter_call() async {
+    await assertDiagnostics(
+      r'''import 'package:throws/throws.dart';
+class Box {
+  @Throws()
+  int get value => throw Exception('x');
+}
+
+int readValue(Box box) {
+  return box.value;
+}''',
+      [lint(143, 5)],
+    );
+  }
+
+  void test_reports_local_throwing_call() async {
+    await assertDiagnostics(
+      r'''int getSingle() {
+  throw Exception('x');
+}
+
+void main() {
+  getSingle();
+}''',
+      [lint(61, 9)],
     );
   }
 }
