@@ -39,7 +39,7 @@ Place throws.yaml at the package root to extend or override known throwing membe
 
 ```yaml
 throws:
-  useSdkMap: true
+  use_sdk_map: true
   map:
     dart:core.Iterable.single:
       - StateError

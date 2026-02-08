@@ -14,8 +14,7 @@ const _dateTime = 'DateTime';
 const _uri = 'Uri';
 
 const _configFileName = 'throws.yaml';
-const _configUseSdkMapKey = 'useSdkMap';
-const _configUseSdkMapSnakeKey = 'use_sdk_map';
+const _configUseSdkMapKey = 'use_sdk_map';
 
 const _stateError = 'StateError';
 const _rangeError = 'RangeError';
@@ -168,10 +167,9 @@ _ThrowsConfig _parseThrowsYaml(String content) {
 }
 
 bool _readUseSdkMap(YamlMap throwsNode) {
-  final value =
-      throwsNode[_configUseSdkMapKey] ?? throwsNode[_configUseSdkMapSnakeKey];
+  final value = throwsNode[_configUseSdkMapKey];
   if (value is bool) {
     return value;
   }
-  return true;
+  return false;
 }

@@ -1,3 +1,6 @@
+## 1.0.0-alpha.5
+- Fixes use_sdk_map read
+
 ## 1.0.0-alpha.4
 
 - Fixes plugin name
