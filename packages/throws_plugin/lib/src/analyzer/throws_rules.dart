@@ -350,6 +350,17 @@ class _FunctionBodyVisitor extends RecursiveAstVisitor<void> {
 
   @override
   void visitMethodInvocation(MethodInvocation node) {
+    if (_isErrorThrowWithStackTrace(node)) {
+      if (!_isHandledByTryCatch(node)) {
+        _summary.hasUnhandledThrow = true;
+        final typeName = _typeNameFromErrorThrowWithStackTrace(node);
+        if (typeName != null) {
+          _summary.thrownErrors.add(typeName);
+        }
+      }
+      super.visitMethodInvocation(node);
+      return;
+    }
     final element = node.methodName.element;
     if (_includeAnnotatedAndSdk &&
         _isThrowsAnnotatedOrSdk(element) &&
@@ -494,9 +505,46 @@ class _ThrowFinder extends RecursiveAstVisitor<void> {
   }
 
   @override
+  void visitMethodInvocation(MethodInvocation node) {
+    if (_isErrorThrowWithStackTrace(node)) {
+      foundThrow = true;
+    }
+    super.visitMethodInvocation(node);
+  }
+
+  @override
   void visitFunctionExpression(FunctionExpression node) {
     // Ignore nested functions.
   }
+}
+
+bool _isErrorThrowWithStackTrace(MethodInvocation node) {
+  if (node.methodName.name != 'throwWithStackTrace') {
+    return false;
+  }
+
+  final element = node.methodName.element;
+  if (element is ExecutableElement) {
+    final enclosing = element.enclosingElement;
+    if (enclosing is InterfaceElement && enclosing.name == 'Error') {
+      return true;
+    }
+  }
+
+  final target = node.target;
+  if (target is Identifier && target.name == 'Error') {
+    return true;
+  }
+
+  return false;
+}
+
+String? _typeNameFromErrorThrowWithStackTrace(MethodInvocation node) {
+  final args = node.argumentList.arguments;
+  if (args.isEmpty) {
+    return null;
+  }
+  return _typeNameFromExpression(args.first);
 }
 
 bool _isAbstractOrExternalBody(FunctionBody body, Token? externalKeyword) {

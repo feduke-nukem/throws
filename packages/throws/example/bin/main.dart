@@ -28,10 +28,15 @@ void main() {
   print(safeParsePositiveInt('oops'));
   print(delegatedParse('7'));
   getSingle();
+  errorThrowWithStackTrace();
 }
 
 int getSingle() {
   final list = [];
 
   return list.single;
+}
+
+int errorThrowWithStackTrace() {
+  Error.throwWithStackTrace(Exception(), StackTrace.current);
 }

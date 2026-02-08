@@ -53,6 +53,24 @@ void f() {
     );
   }
 
+  void test_reports_throw_with_stack_trace_without_annotation() async {
+    await assertDiagnostics(
+      r'''class Error {
+  external static Never throwWithStackTrace(Object error, StackTrace stackTrace);
+}
+
+class StackTrace {
+  const StackTrace();
+  static const StackTrace current = StackTrace();
+}
+
+void errorThrowWithStackTrace() {
+  Error.throwWithStackTrace(Exception(), StackTrace.current);
+}''',
+      [lint(198, 24)],
+    );
+  }
+
   void test_no_lint_when_annotated() async {
     await assertNoDiagnostics(
       r'''import 'package:throws/throws.dart';
@@ -290,6 +308,28 @@ void main() {
   getSingle();
 }''',
       [lint(61, 9)],
+    );
+  }
+
+  void test_reports_throw_with_stack_trace_call() async {
+    await assertDiagnostics(
+      r'''class Error {
+  external static Never throwWithStackTrace(Object error, StackTrace stackTrace);
+}
+
+class StackTrace {
+  const StackTrace();
+  static const StackTrace current = StackTrace();
+}
+
+void errorThrowWithStackTrace() {
+  Error.throwWithStackTrace(Exception(), StackTrace.current);
+}
+
+void main() {
+  errorThrowWithStackTrace();
+}''',
+      [lint(308, 24)],
     );
   }
 }
