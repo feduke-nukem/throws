@@ -1,3 +1,6 @@
+## 1.0.0-alpha.5
+- Fix README.md
+
 ## 1.0.0-alpha.4
 - Makes constructor named
 

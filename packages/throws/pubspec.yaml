@@ -1,6 +1,6 @@
 name: throws
 description: An annotation for documenting and enforcing throwing functions.
-version: 1.0.0-alpha.4
+version: 1.0.0-alpha.5
 repository: https://github.com/Yobari-Timeliners/throws/tree/main/packages/throws
 homepage: https://github.com/Yobari-Timeliners/throws/tree/main/packages/throws
 screenshots:
