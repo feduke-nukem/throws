@@ -14,6 +14,8 @@ const _dateTime = 'DateTime';
 const _uri = 'Uri';
 
 const _configFileName = 'throws.yaml';
+const _configUseSdkMapKey = 'useSdkMap';
+const _configUseSdkMapSnakeKey = 'use_sdk_map';
 
 const _stateError = 'StateError';
 const _rangeError = 'RangeError';
@@ -40,7 +42,7 @@ const Map<String, List<String>> _sdkThrowsMap = {
   '$_dartCoreUri.$_uri.parse': [_formatException],
 };
 
-final Map<String, Map<String, List<String>>> _userThrowsCache = {};
+final Map<String, _ThrowsConfig> _userThrowsCache = {};
 
 List<String>? sdkThrowsForElement(Element? element) {
   final executable = element is ExecutableElement ? element : null;
@@ -62,8 +64,14 @@ List<String>? sdkThrowsForElement(Element? element) {
   final key = enclosing == null
       ? '$libraryUri.$memberName'
       : '$libraryUri.$enclosing.$memberName';
-  final userMap = _loadUserThrowsMap(executable);
-  return userMap[key] ?? _sdkThrowsMap[key];
+  final config = _loadUserThrowsConfig(executable);
+  if (config == null) {
+    return _sdkThrowsMap[key];
+  }
+  if (config.useSdkMap) {
+    return config.map[key] ?? _sdkThrowsMap[key];
+  }
+  return config.map[key];
 }
 
 bool isSdkThrowingElement(Element? element) {
@@ -77,12 +85,12 @@ String? _normalizeLibraryUri(String? identifier) {
   return identifier == 'dart.core' ? _dartCoreUri : identifier;
 }
 
-Map<String, List<String>> _loadUserThrowsMap(ExecutableElement executable) {
+_ThrowsConfig? _loadUserThrowsConfig(ExecutableElement executable) {
   final session = executable.session;
   final root = session?.analysisContext.contextRoot.root;
   final rootPath = root?.path;
   if (rootPath == null || rootPath.isEmpty) {
-    return const {};
+    return null;
   }
 
   final cached = _userThrowsCache[rootPath];
@@ -92,35 +100,47 @@ Map<String, List<String>> _loadUserThrowsMap(ExecutableElement executable) {
 
   final file = File('$rootPath/$_configFileName');
   if (!file.existsSync()) {
-    _userThrowsCache[rootPath] = const {};
-    return const {};
+    _userThrowsCache[rootPath] = const _ThrowsConfig();
+    return _userThrowsCache[rootPath];
   }
 
   try {
     final content = file.readAsStringSync();
-    final map = _parseThrowsYaml(content);
-    _userThrowsCache[rootPath] = map;
-    return map;
+    final config = _parseThrowsYaml(content);
+    _userThrowsCache[rootPath] = config;
+    return config;
   } catch (_) {
-    _userThrowsCache[rootPath] = const {};
-    return const {};
+    _userThrowsCache[rootPath] = const _ThrowsConfig();
+    return _userThrowsCache[rootPath];
   }
 }
 
-Map<String, List<String>> _parseThrowsYaml(String content) {
+class _ThrowsConfig {
+  final Map<String, List<String>> map;
+  final bool useSdkMap;
+
+  const _ThrowsConfig({
+    this.map = const {},
+    this.useSdkMap = true,
+  });
+}
+
+_ThrowsConfig _parseThrowsYaml(String content) {
   final doc = loadYaml(content);
   if (doc is! YamlMap) {
-    return const {};
+    return const _ThrowsConfig();
   }
 
   final throwsNode = doc['throws'];
   if (throwsNode is! YamlMap) {
-    return const {};
+    return const _ThrowsConfig();
   }
+
+  final useSdkMap = _readUseSdkMap(throwsNode);
 
   final mapNode = throwsNode['map'] ?? throwsNode['sdk_throws'] ?? throwsNode;
   if (mapNode is! YamlMap) {
-    return const {};
+    return _ThrowsConfig(useSdkMap: useSdkMap);
   }
 
   final result = <String, List<String>>{};
@@ -144,5 +164,14 @@ Map<String, List<String>> _parseThrowsYaml(String content) {
       result[key] = [value];
     }
   }
-  return result;
+  return _ThrowsConfig(map: result, useSdkMap: useSdkMap);
+}
+
+bool _readUseSdkMap(YamlMap throwsNode) {
+  final value =
+      throwsNode[_configUseSdkMapKey] ?? throwsNode[_configUseSdkMapSnakeKey];
+  if (value is bool) {
+    return value;
+  }
+  return true;
 }
