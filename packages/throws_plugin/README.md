@@ -14,9 +14,10 @@ plugins:
     version: any
     diagnostics:
       missing_throws_annotation: error
-      unhandled_throws_call: error
+      throws_annotation_mismatch: error
       unused_throws_annotation: error
       introduced_throws_in_override: error
+      missing_error_handling: error
 ```
 
 ## Lints
@@ -31,7 +32,7 @@ Diagnostics are reported at the call site for unhandled throws.
 
 - Add `@Throws` annotation
 - Remove`@Throws` annotation
-- Wrap in `try/catch` (with inferred expectedErrors when available)
+- Wrap in `try/catch` (with inferred errors when available)
 
 ## throws.yaml
 

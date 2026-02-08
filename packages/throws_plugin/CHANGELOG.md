@@ -1,3 +1,8 @@
+## 1.0.0-alpha.7
+- Adds new assists
+- Fix missing clauses
+- Fix try/catch resolving
+
 ## 1.0.0-alpha.6
 - Adds support of Error.throwWithStackTrace
 - 

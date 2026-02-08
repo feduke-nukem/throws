@@ -10,11 +10,23 @@ extension AnnotationX on Annotation {
 
   List<String> get expectedErrors {
     final arguments = this.arguments?.arguments;
-    if (arguments == null || arguments.length < 2) {
+    if (arguments == null || arguments.isEmpty) {
       return const [];
     }
 
-    final expected = arguments[1];
+    Expression? expected;
+    for (final argument in arguments) {
+      if (argument is NamedExpression &&
+          (argument.name.label.name == 'errors')) {
+        expected = argument.expression;
+        break;
+      }
+    }
+
+    expected ??= arguments.length >= 2 ? arguments[1] : null;
+    if (expected == null) {
+      return const [];
+    }
     if (expected is SetOrMapLiteral) {
       return expectedErrorsFromLiteralElements(expected.elements);
     }

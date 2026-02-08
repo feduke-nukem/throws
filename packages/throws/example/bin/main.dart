@@ -1,6 +1,6 @@
 import 'package:throws/throws.dart';
 
-@Throws('reason', {RangeError})
+@Throws(errors: {RangeError})
 int parsePositiveInt(String input) {
   final value = int.parse(input);
   if (value < 0) {
@@ -18,33 +18,30 @@ int safeParsePositiveInt(String input) {
   }
 }
 
-@Throws('Delegates to parsePositiveInt', {RangeError})
+@Throws(reason: 'Delegates to parsePositiveInt', errors: {RangeError})
 int delegatedParse(String input) {
   return parsePositiveInt(input);
 }
 
 abstract interface class A {
-  @Throws('', {ArgumentError})
+  @Throws(errors: {ArgumentError})
   void doSome();
 }
 
 class B implements A {
   @override
   void doSome() {
-    try {
-      print(delegatedParse('7'));
-    } on FormatException catch (e, stackTrace) {
-      // TODO: handle error
-    } on RangeError catch (e, stackTrace) {}
+    print(delegatedParse('7'));
   }
 }
 
-@Throws('', {ArgumentError})
 void main() {
   try {
     print(delegatedParse('7'));
-  } catch (e, stackTrace) {
-    throw ArgumentError();
+  } on RangeError catch (e, stackTrace) {
+    // TODO: handle error
+  } on Object catch (e, stackTrace) {
+    // TODO: handle error
   }
 }
 
@@ -54,12 +51,12 @@ int getSingle() {
   return list.single;
 }
 
-@Throws('reason', {Exception})
+@Throws(errors: {Exception})
 int errorThrowWithStackTrace() {
   Error.throwWithStackTrace(Exception(), StackTrace.current);
 }
 
-@Throws('reason', {ArgumentError})
+@Throws(errors: {ArgumentError})
 int throwing() {
   throw ArgumentError();
 }

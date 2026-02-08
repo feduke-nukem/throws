@@ -11,7 +11,7 @@ Add the dependency to your pubspec.yaml.
 Annotate functions that can throw:
 
 ```dart
-@Throws('Parsing input failed', {FormatException, RangeError})
+@Throws(reason: 'Parsing input failed', errors: {FormatException, RangeError})
 int parsePositiveInt(String input) {
   final value = int.parse(input);
   if (value < 0) {
@@ -30,11 +30,11 @@ void mightThrow() {
 }
 ```
 
-## expectedErrors
+## Expected errors
 
-Use expectedErrors to declare the error types callers should handle. This is a set of Type literals.
+Use errors to declare the error types callers should handle. This is a set of Type literals.
 
 ```dart
-@Throws('Reason', {StateError})
+@Throws(reason: 'Reason', errors: {StateError})
 int singleValue(Iterable<int> values) => values.single;
 ```

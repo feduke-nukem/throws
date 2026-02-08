@@ -56,7 +56,7 @@ class AddThrowsAnnotationAssist extends ResolvedCorrectionProducer {
         builder.addInsertion(offset, (builder) {
           if (expectedErrors.isNotEmpty) {
             builder.write(
-              '@${ThrowsAnnotation.nameCapitalized}(\'reason\', {',
+              '@${ThrowsAnnotation.nameCapitalized}(reason: \'reason\', errors: {',
             );
             builder.write(expectedErrors.join(', '));
             builder.write('})');

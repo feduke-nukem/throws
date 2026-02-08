@@ -60,11 +60,14 @@ class UpdateThrowsAnnotationAssist extends ResolvedCorrectionProducer {
         body,
         localExpectedErrorsByElement: localInfo.expectedErrorsByElement,
       );
+      final reason = _reasonFromAnnotation(targetAnnotation) ?? 'reason';
 
       await builder.addDartFileEdit(file, (builder) {
         builder.addReplacement(range.node(targetAnnotation), (builder) {
           if (expectedErrors.isNotEmpty) {
-            builder.write('@${ThrowsAnnotation.nameCapitalized}(\'reason\', {');
+            builder.write(
+              '@${ThrowsAnnotation.nameCapitalized}(reason: ${_stringLiteral(reason)}, errors: {',
+            );
             builder.write(expectedErrors.join(', '));
             builder.write('})');
           } else {
@@ -76,4 +79,33 @@ class UpdateThrowsAnnotationAssist extends ResolvedCorrectionProducer {
       return;
     }
   }
+}
+
+String? _reasonFromAnnotation(Annotation annotation) {
+  final arguments = annotation.arguments?.arguments;
+  if (arguments == null || arguments.isEmpty) {
+    return null;
+  }
+
+  for (final argument in arguments) {
+    if (argument is NamedExpression &&
+        argument.name.label.name == 'reason') {
+      final expression = argument.expression;
+      if (expression is StringLiteral) {
+        return expression.stringValue;
+      }
+    }
+  }
+
+  final firstArg = arguments.first;
+  if (firstArg is StringLiteral) {
+    return firstArg.stringValue;
+  }
+
+  return null;
+}
+
+String _stringLiteral(String value) {
+  final escaped = value.replaceAll('\\', r'\\').replaceAll("'", r"\'");
+  return "'$escaped'";
 }

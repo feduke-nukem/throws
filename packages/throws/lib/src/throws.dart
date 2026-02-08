@@ -2,10 +2,10 @@ const throws = Throws();
 
 class Throws {
   final String? reason;
-  final Set<Type> expectedErrors;
+  final Set<Type> errors;
 
-  const Throws([
+  const Throws({
     this.reason,
-    this.expectedErrors = const {},
-  ]);
+    this.errors = const {},
+  });
 }

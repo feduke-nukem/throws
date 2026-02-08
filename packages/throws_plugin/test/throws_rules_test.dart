@@ -50,16 +50,11 @@ const throws = Throws();
 
 class Throws {
   final String? reason;
-  final Set<Type> expectedErrors;
+  final Set<Type> errors;
 
-  const Throws([
+  const Throws({
     this.reason,
-    this.expectedErrors = const {},
-  ]);
-
-  const Throws.named({
-    this.reason,
-    this.expectedErrors = const {},
+    this.errors = const {},
   });
 }
 ''');
@@ -145,16 +140,11 @@ const throws = Throws();
 
 class Throws {
   final String? reason;
-  final Set<Type> expectedErrors;
+  final Set<Type> errors;
 
-  const Throws([
+  const Throws({
     this.reason,
-    this.expectedErrors = const {},
-  ]);
-
-  const Throws.named({
-    this.reason,
-    this.expectedErrors = const {},
+    this.errors = const {},
   });
 }
 ''');
@@ -173,7 +163,7 @@ class Throws {
     await assertDiagnostics(
       r'''import 'package:throws/throws.dart';
 abstract interface class A {
-  @Throws('', {Exception})
+  @Throws(reason: '', errors: {Exception})
   void m();
 }
 
@@ -183,7 +173,7 @@ class B implements A {
     throw ArgumentError();
   }
 }''',
-      [lint(150, 1)],
+      [lint(166, 1)],
     );
   }
 
@@ -191,7 +181,7 @@ class B implements A {
     await assertDiagnostics(
       r'''import 'package:throws/throws.dart';
 abstract class A {
-  @Throws('', {Exception})
+  @Throws(reason: '', errors: {Exception})
   void m();
 }
 
@@ -201,7 +191,7 @@ class B extends A {
     throw ArgumentError();
   }
 }''',
-      [lint(137, 1)],
+      [lint(153, 1)],
     );
   }
 
@@ -209,7 +199,7 @@ class B extends A {
     await assertNoDiagnostics(
       r'''import 'package:throws/throws.dart';
 abstract class A {
-  @Throws('', {Exception})
+  @Throws(reason: '', errors: {Exception})
   void m();
 }
 
@@ -236,16 +226,11 @@ const throws = Throws();
 
 class Throws {
   final String? reason;
-  final Set<Type> expectedErrors;
+  final Set<Type> errors;
 
-  const Throws([
+  const Throws({
     this.reason,
-    this.expectedErrors = const {},
-  ]);
-
-  const Throws.named({
-    this.reason,
-    this.expectedErrors = const {},
+    this.errors = const {},
   });
 }
 ''');
@@ -359,7 +344,7 @@ void main() {
     await assertDiagnostics(
       '''import 'package:throws/throws.dart';
 $_coreStubs
-@Throws('Delegates', {FormatException, RangeError})
+@Throws(reason: 'Delegates', errors: {FormatException, RangeError})
 int delegatedParse(String input) {
   throw FormatException('x');
 }
@@ -371,7 +356,7 @@ void f() {
     // handle
   }
 }''',
-      [lint(501, 14)],
+      [lint(517, 14)],
     );
   }
 
@@ -379,7 +364,7 @@ void f() {
     await assertNoDiagnostics(
       '''import 'package:throws/throws.dart';
 $_coreStubs
-@Throws('Delegates', {FormatException, RangeError})
+@Throws(reason: 'Delegates', errors: {FormatException, RangeError})
 int delegatedParse(String input) {
   throw FormatException('x');
 }
@@ -432,16 +417,11 @@ const throws = Throws();
 
 class Throws {
   final String? reason;
-  final Set<Type> expectedErrors;
+  final Set<Type> errors;
 
-  const Throws([
+  const Throws({
     this.reason,
-    this.expectedErrors = const {},
-  ]);
-
-  const Throws.named({
-    this.reason,
-    this.expectedErrors = const {},
+    this.errors = const {},
   });
 }
 ''');
@@ -458,11 +438,11 @@ class Throws {
     await assertDiagnostics(
       '''import 'package:throws/throws.dart';
 $_coreStubs
-@Throws('reason', {FormatException})
+@Throws(reason: 'reason', errors: {FormatException})
 void f() {
   throw RangeError('x');
 }''',
-      [lint(400, 1)],
+      [lint(416, 1)],
     );
   }
 
@@ -470,7 +450,7 @@ void f() {
     await assertNoDiagnostics(
       '''import 'package:throws/throws.dart';
 $_coreStubs
-@Throws('reason', {FormatException})
+@Throws(reason: 'reason', errors: {FormatException})
 void f() {
   throw FormatException('x');
 }''',
@@ -492,7 +472,7 @@ void f() {
     await assertNoDiagnostics(
       '''import 'package:throws/throws.dart';
 $_coreStubs
-@Throws('reason', {Exception})
+@Throws(reason: 'reason', errors: {Exception})
 void f() {
   throw Exception('x');
 }''',
@@ -513,16 +493,11 @@ const throws = Throws();
 
 class Throws {
   final String? reason;
-  final Set<Type> expectedErrors;
+  final Set<Type> errors;
 
-  const Throws([
+  const Throws({
     this.reason,
-    this.expectedErrors = const {},
-  ]);
-
-  const Throws.named({
-    this.reason,
-    this.expectedErrors = const {},
+    this.errors = const {},
   });
 }
 ''');
@@ -560,7 +535,7 @@ int delegatedParse(String input) {
     await assertNoDiagnostics(
       r'''import 'package:throws/throws.dart';
 abstract class A {
-  @Throws('', {Exception})
+      @Throws(reason: '', errors: {Exception})
   void m();
 }''',
     );

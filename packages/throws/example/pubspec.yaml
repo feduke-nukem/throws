@@ -8,4 +8,4 @@ environment:
 
 dependencies:
   lints: ^6.0.0
-  throws: ^1.0.0-alpha.2
+  throws: ^1.0.0-alpha.4

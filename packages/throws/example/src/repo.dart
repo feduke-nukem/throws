@@ -1,6 +1,6 @@
 import 'package:throws/throws.dart';
 
 abstract interface class IRepository {
-  @Throws('', {Exception})
+  @Throws(errors: {Exception})
   Future<List<String>> getSettings();
 }

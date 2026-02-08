@@ -1,6 +1,6 @@
 name: throws_plugin
 description: Analyzer plugin for @Throws/@throws usage.
-version: 1.0.0-alpha.6
+version: 1.0.0-alpha.7
 repository: https://github.com/Yobari-Timeliners/throws/tree/main/packages/throws_plugin
 homepage: https://github.com/Yobari-Timeliners/throws/tree/main/packages/throws_plugin
 screenshots:

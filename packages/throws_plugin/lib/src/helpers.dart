@@ -134,8 +134,8 @@ List<String> _expectedErrorsFromAnnotationElement(ExecutableElement element) {
   for (final annotation in element.metadata.annotations) {
     if (_isThrowsAnnotation(annotation)) {
       final value = annotation.computeConstantValue();
-      final expectedField = value?.getField('expectedErrors');
-      final values = expectedField?.toSetValue();
+      final errorsField = value?.getField('errors');
+      final values = errorsField?.toSetValue();
       if (values == null) {
         return const [];
       }
