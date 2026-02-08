@@ -1,3 +1,7 @@
+## 1.0.0-alpha.4
+
+- Fixes plugin name
+
 ## 1.0.0-alpha.3
 
 - Adds supertype handling

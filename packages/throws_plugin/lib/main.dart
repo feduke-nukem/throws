@@ -8,7 +8,7 @@ final plugin = ThrowsAnalyzerPlugin();
 
 class ThrowsAnalyzerPlugin extends Plugin {
   @override
-  String get name => 'Throws Analyzer Plugin';
+  String get name => 'throws_plugin';
 
   @override
   void register(PluginRegistry registry) {
