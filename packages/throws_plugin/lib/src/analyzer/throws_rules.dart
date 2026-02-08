@@ -1,15 +1,18 @@
 import 'package:analyzer/analysis_rule/analysis_rule.dart';
 import 'package:analyzer/analysis_rule/rule_context.dart';
 import 'package:analyzer/analysis_rule/rule_visitor_registry.dart';
+import 'package:analyzer/dart/analysis/results.dart';
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/token.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
 import 'package:analyzer/dart/element/element.dart';
+import 'package:analyzer/dart/element/type.dart';
 import 'package:analyzer/error/error.dart';
 import 'package:throws_plugin/src/analyzer/sdk_throws_map.dart';
 
 final List<AnalysisRule> throwsLintRules = [
   MissingThrowsAnnotationRule(),
+  IntroducedThrowsInOverrideRule(),
   UnhandledThrowsCallRule(),
   UnusedThrowsAnnotationRule(),
 ];
@@ -41,6 +44,39 @@ class MissingThrowsAnnotationRule extends AnalysisRule {
       _ThrowsCompilationUnitVisitor(
         this,
         _ThrowsRuleKind.missingThrowsAnnotation,
+      ),
+    );
+  }
+}
+
+class IntroducedThrowsInOverrideRule extends AnalysisRule {
+  static const LintCode _code = LintCode(
+    'introduced_throws_in_override',
+    'This override introduces new error types not declared in the base member.',
+    correctionMessage:
+        'Update the base member @Throws expectedErrors or annotate this member.',
+  );
+
+  IntroducedThrowsInOverrideRule()
+    : super(
+        name: 'introduced_throws_in_override',
+        description:
+            'Flags overrides that introduce new error types without updating the base annotation.',
+      );
+
+  @override
+  LintCode get diagnosticCode => _code;
+
+  @override
+  void registerNodeProcessors(
+    RuleVisitorRegistry registry,
+    RuleContext context,
+  ) {
+    registry.addCompilationUnit(
+      this,
+      _ThrowsCompilationUnitVisitor(
+        this,
+        _ThrowsRuleKind.introducedThrowsInOverride,
       ),
     );
   }
@@ -109,6 +145,7 @@ class UnusedThrowsAnnotationRule extends AnalysisRule {
 
 enum _ThrowsRuleKind {
   missingThrowsAnnotation,
+  introducedThrowsInOverride,
   unhandledThrowsCall,
   unusedThrowsAnnotation,
 }
@@ -128,21 +165,34 @@ class _ThrowsCompilationUnitVisitor extends SimpleAstVisitor<void> {
         case _ThrowsRuleKind.missingThrowsAnnotation:
           if (!summary.hasThrowsAnnotation &&
               (summary.hasUnhandledThrow || summary.hasUnhandledThrowingCall)) {
+            if (!_hasAnnotatedSuper(summary) &&
+                !_isCoveredByInheritedThrows(summary)) {
+              _rule.reportAtToken(summary.nameToken);
+            }
+          }
+          break;
+        case _ThrowsRuleKind.introducedThrowsInOverride:
+          if (!summary.hasThrowsAnnotation &&
+              (summary.hasUnhandledThrow || summary.hasUnhandledThrowingCall) &&
+              _introducesNewErrors(summary)) {
             _rule.reportAtToken(summary.nameToken);
           }
           break;
         case _ThrowsRuleKind.unhandledThrowsCall:
           if (!summary.hasThrowsAnnotation &&
               summary.unhandledThrowingCallNodes.isNotEmpty) {
-            for (final node in summary.unhandledThrowingCallNodes) {
-              _rule.reportAtNode(node);
+            if (!_isCoveredByInheritedThrows(summary)) {
+              for (final node in summary.unhandledThrowingCallNodes) {
+                _rule.reportAtNode(node);
+              }
             }
           }
           break;
         case _ThrowsRuleKind.unusedThrowsAnnotation:
           if (summary.hasThrowsAnnotation &&
               !summary.hasUnhandledThrow &&
-              !summary.hasUnhandledThrowingCall) {
+              !summary.hasUnhandledThrowingCall &&
+              !summary.isAbstractOrExternal) {
             _rule.reportAtToken(summary.nameToken);
           }
           break;
@@ -197,7 +247,12 @@ class _FunctionCollector extends RecursiveAstVisitor<void> {
       nameToken: node.name,
       body: node.functionExpression.body,
       hasThrowsAnnotation: _hasThrowsAnnotationOnNode(node.metadata),
+      isAbstractOrExternal: _isAbstractOrExternalBody(
+        node.functionExpression.body,
+        node.externalKeyword,
+      ),
     );
+    summary.element = node.declaredFragment?.element.baseElement;
     summaries.add(summary);
     final element = node.declaredFragment?.element;
     if (element != null) {
@@ -212,7 +267,11 @@ class _FunctionCollector extends RecursiveAstVisitor<void> {
       nameToken: node.name,
       body: node.body,
       hasThrowsAnnotation: _hasThrowsAnnotationOnNode(node.metadata),
+      isAbstractOrExternal:
+          node.isAbstract ||
+          _isAbstractOrExternalBody(node.body, node.externalKeyword),
     );
+    summary.element = node.declaredFragment?.element.baseElement;
     summaries.add(summary);
     final element = node.declaredFragment?.element;
     if (element != null) {
@@ -226,6 +285,9 @@ class _FunctionSummary {
   final Token nameToken;
   final FunctionBody body;
   final bool hasThrowsAnnotation;
+  final bool isAbstractOrExternal;
+  final Set<String> thrownErrors = {};
+  Element? element;
   bool hasUnhandledThrow = false;
   bool hasUnhandledThrowingCall = false;
   final List<AstNode> unhandledThrowingCallNodes = [];
@@ -234,6 +296,7 @@ class _FunctionSummary {
     required this.nameToken,
     required this.body,
     required this.hasThrowsAnnotation,
+    required this.isAbstractOrExternal,
   });
 }
 
@@ -268,6 +331,10 @@ class _FunctionBodyVisitor extends RecursiveAstVisitor<void> {
   void visitThrowExpression(ThrowExpression node) {
     if (!_isHandledByTryCatch(node)) {
       _summary.hasUnhandledThrow = true;
+      final typeName = _typeNameFromExpression(node.expression);
+      if (typeName != null) {
+        _summary.thrownErrors.add(typeName);
+      }
     }
     super.visitThrowExpression(node);
   }
@@ -276,6 +343,7 @@ class _FunctionBodyVisitor extends RecursiveAstVisitor<void> {
   void visitRethrowExpression(RethrowExpression node) {
     if (!_isHandledByTryCatch(node)) {
       _summary.hasUnhandledThrow = true;
+      _summary.thrownErrors.add('Object');
     }
     super.visitRethrowExpression(node);
   }
@@ -288,6 +356,7 @@ class _FunctionBodyVisitor extends RecursiveAstVisitor<void> {
         !_isHandledByTryCatch(node)) {
       _summary.hasUnhandledThrowingCall = true;
       _summary.unhandledThrowingCallNodes.add(node.methodName);
+      _summary.thrownErrors.addAll(_expectedErrorsFromElementOrSdk(element));
     }
     if (_isLocalThrowingElement(element) && !_isHandledByTryCatch(node)) {
       _summary.hasUnhandledThrowingCall = true;
@@ -304,6 +373,7 @@ class _FunctionBodyVisitor extends RecursiveAstVisitor<void> {
         !_isHandledByTryCatch(node)) {
       _summary.hasUnhandledThrowingCall = true;
       _summary.unhandledThrowingCallNodes.add(node);
+      _summary.thrownErrors.addAll(_expectedErrorsFromElementOrSdk(element));
     }
     if (_isLocalThrowingElement(element) && !_isHandledByTryCatch(node)) {
       _summary.hasUnhandledThrowingCall = true;
@@ -320,6 +390,7 @@ class _FunctionBodyVisitor extends RecursiveAstVisitor<void> {
         !_isHandledByTryCatch(node)) {
       _summary.hasUnhandledThrowingCall = true;
       _summary.unhandledThrowingCallNodes.add(node.constructorName);
+      _summary.thrownErrors.addAll(_expectedErrorsFromElementOrSdk(element));
     }
     if (_isLocalThrowingElement(element) && !_isHandledByTryCatch(node)) {
       _summary.hasUnhandledThrowingCall = true;
@@ -336,6 +407,7 @@ class _FunctionBodyVisitor extends RecursiveAstVisitor<void> {
         !_isHandledByTryCatch(node)) {
       _summary.hasUnhandledThrowingCall = true;
       _summary.unhandledThrowingCallNodes.add(node.propertyName);
+      _summary.thrownErrors.addAll(_expectedErrorsFromElementOrSdk(element));
     }
     if (_isLocalThrowingElement(element) && !_isHandledByTryCatch(node)) {
       _summary.hasUnhandledThrowingCall = true;
@@ -352,6 +424,7 @@ class _FunctionBodyVisitor extends RecursiveAstVisitor<void> {
         !_isHandledByTryCatch(node)) {
       _summary.hasUnhandledThrowingCall = true;
       _summary.unhandledThrowingCallNodes.add(node.identifier);
+      _summary.thrownErrors.addAll(_expectedErrorsFromElementOrSdk(element));
     }
     if (_isLocalThrowingElement(element) && !_isHandledByTryCatch(node)) {
       _summary.hasUnhandledThrowingCall = true;
@@ -426,6 +499,318 @@ class _ThrowFinder extends RecursiveAstVisitor<void> {
   }
 }
 
+bool _isAbstractOrExternalBody(FunctionBody body, Token? externalKeyword) {
+  if (externalKeyword != null) {
+    return true;
+  }
+  return body is EmptyFunctionBody;
+}
+
+bool _hasAnnotatedSuper(_FunctionSummary summary) {
+  final element = summary.element;
+  if (element is! ExecutableElement) {
+    return false;
+  }
+  final info = _collectInheritedThrowsInfo(element);
+  if (info.hasAnnotatedSuper) {
+    return true;
+  }
+  return _findUnitOverrideInfo(summary).hasAnnotatedSuper;
+}
+
+bool _isCoveredByInheritedThrows(_FunctionSummary summary) {
+  final element = summary.element;
+  if (element is! ExecutableElement) {
+    return false;
+  }
+
+  var info = _collectInheritedThrowsInfo(element);
+  if (!info.hasAnnotatedSuper) {
+    info = _findUnitOverrideInfo(summary);
+    if (!info.hasAnnotatedSuper) {
+      return false;
+    }
+  }
+  if (info.allowAny) {
+    return true;
+  }
+  if (summary.thrownErrors.isEmpty) {
+    return false;
+  }
+
+  return summary.thrownErrors.every(info.expectedErrors.contains);
+}
+
+bool _introducesNewErrors(_FunctionSummary summary) {
+  final element = summary.element;
+  if (element is! ExecutableElement) {
+    return false;
+  }
+
+  var info = _collectInheritedThrowsInfo(element);
+  if (!info.hasAnnotatedSuper || info.allowAny) {
+    info = _findUnitOverrideInfo(summary);
+    if (!info.hasAnnotatedSuper || info.allowAny) {
+      return false;
+    }
+  }
+  if (summary.thrownErrors.isEmpty) {
+    return false;
+  }
+
+  return summary.thrownErrors.any(
+    (error) => !info.expectedErrors.contains(error),
+  );
+}
+
+class _InheritedThrowsInfo {
+  final bool hasAnnotatedSuper;
+  final bool allowAny;
+  final Set<String> expectedErrors;
+
+  const _InheritedThrowsInfo({
+    required this.hasAnnotatedSuper,
+    required this.allowAny,
+    required this.expectedErrors,
+  });
+}
+
+_InheritedThrowsInfo _findUnitOverrideInfo(_FunctionSummary summary) {
+  final element = summary.element;
+  if (element is! ExecutableElement) {
+    return const _InheritedThrowsInfo(
+      hasAnnotatedSuper: false,
+      allowAny: false,
+      expectedErrors: {},
+    );
+  }
+
+  final session = element.session;
+  final library = element.library;
+  if (session == null) {
+    return const _InheritedThrowsInfo(
+      hasAnnotatedSuper: false,
+      allowAny: false,
+      expectedErrors: {},
+    );
+  }
+
+  final parsed = session.getParsedLibraryByElement(library);
+  if (parsed is! ParsedLibraryResult) {
+    return const _InheritedThrowsInfo(
+      hasAnnotatedSuper: false,
+      allowAny: false,
+      expectedErrors: {},
+    );
+  }
+
+  final collector = _OverrideInfoCollector(summary.nameToken.lexeme);
+  for (final unit in parsed.units) {
+    unit.unit.accept(collector);
+    if (collector.result.hasAnnotatedSuper) {
+      break;
+    }
+  }
+  return collector.result;
+}
+
+class _OverrideInfoCollector extends RecursiveAstVisitor<void> {
+  final String _memberName;
+  _InheritedThrowsInfo _result = const _InheritedThrowsInfo(
+    hasAnnotatedSuper: false,
+    allowAny: false,
+    expectedErrors: {},
+  );
+
+  _OverrideInfoCollector(this._memberName);
+
+  _InheritedThrowsInfo get result => _result;
+
+  @override
+  void visitClassDeclaration(ClassDeclaration node) {
+    for (final member in node.members) {
+      if (member is MethodDeclaration) {
+        if (member.name.lexeme == _memberName &&
+            _hasThrowsAnnotationOnNode(member.metadata) &&
+            member.body is EmptyFunctionBody) {
+          final errors = _expectedErrorsFromMetadata(member.metadata);
+          if (errors.isEmpty) {
+            _result = const _InheritedThrowsInfo(
+              hasAnnotatedSuper: true,
+              allowAny: true,
+              expectedErrors: {},
+            );
+          } else {
+            _result = _InheritedThrowsInfo(
+              hasAnnotatedSuper: true,
+              allowAny: false,
+              expectedErrors: errors.toSet(),
+            );
+          }
+        }
+      }
+    }
+    super.visitClassDeclaration(node);
+  }
+}
+
+_InheritedThrowsInfo _collectInheritedThrowsInfo(ExecutableElement element) {
+  final enclosing = element.enclosingElement;
+  if (enclosing is! InterfaceElement) {
+    return const _InheritedThrowsInfo(
+      hasAnnotatedSuper: false,
+      allowAny: false,
+      expectedErrors: {},
+    );
+  }
+
+  final name = element.displayName;
+  final expectedErrors = <String>{};
+  var hasAnnotatedSuper = false;
+  var allowAny = false;
+
+  final candidates = <ExecutableElement>{};
+  if (element is MethodElement) {
+    final nameObj = Name.forLibrary(element.library, element.name ?? name);
+    candidates.addAll(enclosing.getOverridden(nameObj) ?? const []);
+  } else if (element is PropertyAccessorElement) {
+    final nameObj = Name.forLibrary(element.library, element.name ?? name);
+    candidates.addAll(enclosing.getOverridden(nameObj) ?? const []);
+    candidates.addAll(enclosing.getOverridden(nameObj.forGetter) ?? const []);
+    candidates.addAll(enclosing.getOverridden(nameObj.forSetter) ?? const []);
+  }
+
+  final types = <InterfaceType>{};
+  types.addAll(enclosing.allSupertypes);
+  types.addAll(enclosing.interfaces);
+  if (enclosing.supertype != null) {
+    types.add(enclosing.supertype!);
+  }
+  types.addAll(enclosing.mixins);
+  for (final type in types) {
+    final typeElement = type.element;
+    if (element is MethodElement) {
+      final targetName = element.name ?? name;
+      final member = typeElement.getMethod(targetName);
+      if (member != null) {
+        candidates.add(member);
+      } else {
+        for (final candidate in typeElement.methods) {
+          if (candidate.name == targetName) {
+            candidates.add(candidate);
+          }
+        }
+      }
+    } else if (element is PropertyAccessorElement) {
+      final isSetter = element.name?.endsWith('=') ?? false;
+      final targetName = element.name ?? name;
+      final member = isSetter
+          ? typeElement.getSetter(targetName)
+          : typeElement.getGetter(targetName);
+      if (member != null) {
+        candidates.add(member);
+      } else {
+        final list = isSetter ? typeElement.setters : typeElement.getters;
+        for (final candidate in list) {
+          if (candidate.name == targetName) {
+            candidates.add(candidate);
+          }
+        }
+      }
+    }
+  }
+
+  for (final member in candidates) {
+    if (_hasThrowsAnnotationOnElement(member)) {
+      hasAnnotatedSuper = true;
+      final errors = _expectedErrorsFromAnnotationElement(member);
+      if (errors.isEmpty) {
+        allowAny = true;
+      } else {
+        expectedErrors.addAll(errors);
+      }
+    }
+  }
+
+  return _InheritedThrowsInfo(
+    hasAnnotatedSuper: hasAnnotatedSuper,
+    allowAny: allowAny,
+    expectedErrors: expectedErrors,
+  );
+}
+
+bool _hasThrowsAnnotationOnElement(ExecutableElement element) {
+  return element.metadata.annotations.any(_isThrowsAnnotation);
+}
+
+Set<String> _expectedErrorsFromElementOrSdk(Element? element) {
+  final executable = element is ExecutableElement ? element : null;
+  if (executable == null) {
+    return const {};
+  }
+
+  final errors = _expectedErrorsFromAnnotationElement(executable);
+  if (errors.isNotEmpty) {
+    return errors.toSet();
+  }
+
+  final sdkErrors = sdkThrowsForElement(executable);
+  if (sdkErrors == null) {
+    return const {};
+  }
+  return sdkErrors.toSet();
+}
+
+List<String> _expectedErrorsFromAnnotationElement(ExecutableElement element) {
+  for (final annotation in element.metadata.annotations) {
+    if (_isThrowsAnnotation(annotation)) {
+      final value = annotation.computeConstantValue();
+      final expectedField = value?.getField('expectedErrors');
+      final values = expectedField?.toSetValue();
+      if (values == null) {
+        return const [];
+      }
+      final names = <String>[];
+      for (final entry in values) {
+        final typeValue = entry.toTypeValue();
+        final typeName = typeValue?.getDisplayString(withNullability: false);
+        if (typeName != null) {
+          names.add(typeName);
+        }
+      }
+      return names;
+    }
+  }
+  return const [];
+}
+
+String? _typeNameFromExpression(Expression expression) {
+  final staticType = expression.staticType;
+  final staticName = staticType?.getDisplayString(withNullability: false);
+  if (staticName != null && staticName != 'dynamic') {
+    return staticName;
+  }
+  if (expression is InstanceCreationExpression) {
+    return expression.constructorName.type.name.lexeme;
+  }
+  if (expression is MethodInvocation && expression.target == null) {
+    final name = expression.methodName.name;
+    if (name.isNotEmpty && name[0] == name[0].toUpperCase()) {
+      return name;
+    }
+  }
+  if (expression is TypeLiteral) {
+    return expression.type.toSource();
+  }
+  if (expression is SimpleIdentifier) {
+    return expression.name;
+  }
+  if (expression is PrefixedIdentifier) {
+    return expression.identifier.name;
+  }
+  return null;
+}
+
 bool _hasThrowsAnnotationOnNode(List<Annotation> metadata) {
   for (final annotation in metadata) {
     final name = _annotationName(annotation);
@@ -438,6 +823,47 @@ bool _hasThrowsAnnotationOnNode(List<Annotation> metadata) {
     }
   }
   return false;
+}
+
+List<String> _expectedErrorsFromMetadata(List<Annotation> metadata) {
+  for (final annotation in metadata) {
+    final name = _annotationName(annotation);
+    if (name == 'Throws' || name == 'throws') {
+      return _expectedErrorsFromAnnotation(annotation);
+    }
+  }
+  return const [];
+}
+
+List<String> _expectedErrorsFromAnnotation(Annotation annotation) {
+  final arguments = annotation.arguments?.arguments;
+  if (arguments == null || arguments.length < 2) {
+    return const [];
+  }
+
+  final expected = arguments[1];
+  if (expected is SetOrMapLiteral) {
+    return _expectedErrorsFromLiteralElements(expected.elements);
+  }
+  if (expected is ListLiteral) {
+    return _expectedErrorsFromLiteralElements(expected.elements);
+  }
+  return const [];
+}
+
+List<String> _expectedErrorsFromLiteralElements(
+  List<CollectionElement> elements,
+) {
+  final result = <String>[];
+  for (final element in elements) {
+    if (element is Expression) {
+      final typeName = _typeNameFromExpression(element);
+      if (typeName != null) {
+        result.add(typeName);
+      }
+    }
+  }
+  return result;
 }
 
 String? _annotationName(Annotation annotation) {

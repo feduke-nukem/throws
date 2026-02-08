@@ -8,6 +8,7 @@ import 'package:throws_plugin/src/analyzer/throws_rules.dart';
 void main() {
   defineReflectiveSuite(() {
     defineReflectiveTests(MissingThrowsAnnotationRuleTest);
+    defineReflectiveTests(IntroducedThrowsInOverrideRuleTest);
     defineReflectiveTests(UnhandledThrowsCallRuleTest);
     defineReflectiveTests(UnusedThrowsAnnotationRuleTest);
   });
@@ -73,11 +74,96 @@ int f() {
   }
 
   void test_reports_sdk_throwing_call_without_annotation() async {
-    await assertDiagnostics(
+    await assertNoDiagnostics(
       r'''int parseIt(String input) {
   return int.parse(input);
 }''',
-      [lint(4, 7)],
+    );
+  }
+}
+
+@reflectiveTest
+class IntroducedThrowsInOverrideRuleTest extends AnalysisRuleTest {
+  @override
+  String get analysisRule => 'introduced_throws_in_override';
+
+  @override
+  void setUp() {
+    Registry.ruleRegistry.registerLintRule(
+      IntroducedThrowsInOverrideRule(),
+    );
+    newPackage('throws').addFile('lib/throws.dart', r'''
+const throws = Throws();
+
+class Throws {
+  const Throws([String? reason, Set<Type> expectedErrors = const {}]);
+  const Throws.named({
+    String? reason,
+    Set<Type> expectedErrors = const {},
+  });
+}
+''');
+    super.setUp();
+  }
+
+  @override
+  Future<void> tearDown() async {
+    Registry.ruleRegistry.unregisterLintRule(
+      IntroducedThrowsInOverrideRule(),
+    );
+    await super.tearDown();
+  }
+
+  void test_reports_new_error_in_override() async {
+    await assertDiagnostics(
+      r'''import 'package:throws/throws.dart';
+abstract interface class A {
+  @Throws('', {Exception})
+  void m();
+}
+
+class B implements A {
+  @override
+  void m() {
+    throw ArgumentError();
+  }
+}''',
+      [lint(150, 1)],
+    );
+  }
+
+  void test_reports_new_error_in_extends() async {
+    await assertDiagnostics(
+      r'''import 'package:throws/throws.dart';
+abstract class A {
+  @Throws('', {Exception})
+  void m();
+}
+
+class B extends A {
+  @override
+  void m() {
+    throw ArgumentError();
+  }
+}''',
+      [lint(137, 1)],
+    );
+  }
+
+  void test_no_lint_when_override_matches_base() async {
+    await assertNoDiagnostics(
+      r'''import 'package:throws/throws.dart';
+abstract class A {
+  @Throws('', {Exception})
+  void m();
+}
+
+class B implements A {
+  @override
+  void m() {
+    throw Exception('x');
+  }
+}''',
     );
   }
 }
@@ -172,11 +258,10 @@ void caller() {
   }
 
   void test_reports_sdk_throwing_call() async {
-    await assertDiagnostics(
+    await assertNoDiagnostics(
       r'''int parseIt(String input) {
   return int.parse(input);
 }''',
-      [lint(41, 5)],
     );
   }
 
@@ -254,6 +339,16 @@ int delegatedParse(String input) {
 @Throws()
 int delegatedParse(String input) {
   throw Exception('x');
+}''',
+    );
+  }
+
+  void test_no_lint_for_abstract_member() async {
+    await assertNoDiagnostics(
+      r'''import 'package:throws/throws.dart';
+abstract class A {
+  @Throws('', {Exception})
+  void m();
 }''',
     );
   }

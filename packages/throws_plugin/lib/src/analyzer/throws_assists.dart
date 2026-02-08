@@ -191,6 +191,10 @@ Statement? _findEnclosingStatement(AstNode node) {
       return current;
     }
 
+    if (current is VariableDeclarationStatement) {
+      return current;
+    }
+
     if (current is FunctionDeclaration || current is MethodDeclaration) {
       return null;
     }
@@ -205,6 +209,13 @@ Expression? _statementExpression(Statement statement) {
   }
   if (statement is ReturnStatement) {
     return statement.expression;
+  }
+  if (statement is VariableDeclarationStatement) {
+    final declarations = statement.variables.variables;
+    if (declarations.length != 1) {
+      return null;
+    }
+    return declarations.first.initializer;
   }
   return null;
 }

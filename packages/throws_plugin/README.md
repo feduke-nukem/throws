@@ -16,6 +16,7 @@ plugins:
       missing_throws_annotation: error
       unhandled_throws_call: error
       unused_throws_annotation: error
+      introduced_throws_in_override: error
 ```
 
 ## Lints
