@@ -1,7 +1,11 @@
 name: throws
 description: An annotation for documenting and enforcing throwing functions.
-version: 1.0.0
-# repository: https://github.com/my_org/my_repo
+version: 1.0.0-alpha.2
+repository: https://github.com/Yobari-Timeliners/throws/tree/main/packages/throws
+homepage: https://github.com/Yobari-Timeliners/throws/tree/main/packages/throws
+screenshots:
+  - description: 'Balling errors'
+    path: 'art/logo.png'
 
 environment:
   sdk: ^3.10.0

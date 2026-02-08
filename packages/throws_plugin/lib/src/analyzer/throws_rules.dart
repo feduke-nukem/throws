@@ -159,7 +159,6 @@ class _ThrowsAnalyzer {
     for (final summary in collector.summaries) {
       final visitor = _FunctionBodyVisitor(
         summary,
-        collector.summaryByElement,
         includeAnnotatedAndSdk: true,
         localThrowingElements: const {},
       );
@@ -177,7 +176,6 @@ class _ThrowsAnalyzer {
       for (final summary in collector.summaries) {
         final visitor = _FunctionBodyVisitor(
           summary,
-          collector.summaryByElement,
           includeAnnotatedAndSdk: false,
           localThrowingElements: localThrowingElements,
         );
@@ -241,13 +239,11 @@ class _FunctionSummary {
 
 class _FunctionBodyVisitor extends RecursiveAstVisitor<void> {
   final _FunctionSummary _summary;
-  final Map<Element, _FunctionSummary> _summaryByElement;
   final bool _includeAnnotatedAndSdk;
   final Set<Element> _localThrowingElements;
 
   _FunctionBodyVisitor(
-    this._summary,
-    this._summaryByElement, {
+    this._summary, {
     required bool includeAnnotatedAndSdk,
     required Set<Element> localThrowingElements,
   }) : _includeAnnotatedAndSdk = includeAnnotatedAndSdk,
