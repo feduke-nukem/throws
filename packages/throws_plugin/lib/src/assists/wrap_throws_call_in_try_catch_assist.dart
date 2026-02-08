@@ -1,4 +1,10 @@
-part of '../throws_assists.dart';
+import 'package:analysis_server_plugin/edit/dart/correction_producer.dart';
+import 'package:analyzer_plugin/utilities/assist/assist.dart';
+import 'package:analyzer_plugin/utilities/change_builder/change_builder_core.dart';
+import 'package:analyzer_plugin/utilities/range_factory.dart';
+import 'package:throws_plugin/src/utils/extensions/ast_node_x.dart';
+import 'package:throws_plugin/src/utils/extensions/expression_x.dart';
+import 'package:throws_plugin/src/utils/extensions/statement_x.dart';
 
 class WrapThrowsCallInTryCatchAssist extends ResolvedCorrectionProducer {
   static const AssistKind _assistKind = AssistKind(
@@ -19,20 +25,20 @@ class WrapThrowsCallInTryCatchAssist extends ResolvedCorrectionProducer {
   @override
   Future<void> compute(ChangeBuilder builder) async {
     try {
-      final statement = _findEnclosingStatement(node);
+      final statement = node.enclosingStatement;
       if (statement == null || statement.isSynthetic) {
         return;
       }
-      if (_isWithinTryStatement(statement)) {
+      if (statement.isWithinTryStatement) {
         return;
       }
 
-      final expression = _statementExpression(statement);
+      final expression = statement.expression;
       if (expression == null) {
         return;
       }
 
-      final expectedErrors = _expressionExpectedErrors(expression, unit);
+      final expectedErrors = expression.expectedErrors(unit);
       if (expectedErrors == null) {
         return;
       }

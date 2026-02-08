@@ -1,10 +1,17 @@
-part of '../throws_assists.dart';
+import 'package:analysis_server_plugin/edit/dart/correction_producer.dart';
+import 'package:analyzer/dart/ast/ast.dart';
+import 'package:analyzer_plugin/utilities/assist/assist.dart';
+import 'package:analyzer_plugin/utilities/change_builder/change_builder_core.dart';
+import 'package:throws_plugin/src/data/throws_annotation.dart';
+import 'package:throws_plugin/src/helpers.dart';
+import 'package:throws_plugin/src/utils/extensions/ast_node_x.dart';
+import 'package:throws_plugin/src/utils/extensions/compilation_unit_x.dart';
 
 class AddThrowsAnnotationAssist extends ResolvedCorrectionProducer {
   static const AssistKind _assistKind = AssistKind(
     'throws.assist.addThrowsAnnotation',
     30,
-    'Add @throws annotation',
+    'Add @${ThrowsAnnotation.nameCapitalized} annotation',
   );
 
   AddThrowsAnnotationAssist({required super.context});
@@ -19,18 +26,18 @@ class AddThrowsAnnotationAssist extends ResolvedCorrectionProducer {
   @override
   Future<void> compute(ChangeBuilder builder) async {
     try {
-      final functionNode = _findEnclosingFunction(node);
+      final functionNode = node.enclosingFunction;
       if (functionNode == null) {
         return;
       }
 
-      final metadata = _getMetadata(functionNode);
-      if (_hasThrowsAnnotationOnNode(metadata)) {
+      final metadata = functionNode.metadata;
+      if (hasThrowsAnnotationOnNode(metadata)) {
         return;
       }
 
-      final body = _getFunctionBody(functionNode);
-      if (body == null || !_needsThrowsAnnotation(body)) {
+      final body = functionNode.functionBody;
+      if (body == null || !needsThrowsAnnotation(body)) {
         return;
       }
 
@@ -38,23 +45,23 @@ class AddThrowsAnnotationAssist extends ResolvedCorrectionProducer {
       if (unit == null) {
         return;
       }
-      final localInfo = _collectLocalThrowingInfo(unit);
-      final expectedErrors = _collectExpectedErrors(
+      final localInfo = unit.collectLocalThrowingInfo();
+      final expectedErrors = collectExpectedErrors(
         body,
         localExpectedErrorsByElement: localInfo.expectedErrorsByElement,
       );
 
-      final offset = _annotationInsertOffset(functionNode, metadata);
+      final offset = functionNode.insertOffset(metadata);
       await builder.addDartFileEdit(file, (builder) {
         builder.addInsertion(offset, (builder) {
           if (expectedErrors.isNotEmpty) {
             builder.write(
-              '@Throws(\'reason\', {',
+              '@${ThrowsAnnotation.nameCapitalized}(\'reason\', {',
             );
             builder.write(expectedErrors.join(', '));
             builder.write('})');
           } else {
-            builder.write('@throws');
+            builder.write('@${ThrowsAnnotation.nameCapitalized}');
           }
           builder.writeln();
         });

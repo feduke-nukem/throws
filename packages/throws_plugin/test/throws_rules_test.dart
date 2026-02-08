@@ -3,7 +3,11 @@
 import 'package:analyzer/src/lint/registry.dart'; // ignore: implementation_imports
 import 'package:analyzer_testing/analysis_rule/analysis_rule.dart';
 import 'package:test_reflective_loader/test_reflective_loader.dart';
-import 'package:throws_plugin/src/analyzer/throws_rules.dart';
+import 'package:throws_plugin/src/lints/introduced_throws_in_override_rule.dart';
+import 'package:throws_plugin/src/lints/missing_error_handling_rule.dart';
+import 'package:throws_plugin/src/lints/missing_throws_annotation_rule.dart';
+import 'package:throws_plugin/src/lints/throws_annotation_mismatch_rule.dart';
+import 'package:throws_plugin/src/lints/unused_throws_annotation_rule.dart';
 
 const _coreStubs = '''
 class Exception {
