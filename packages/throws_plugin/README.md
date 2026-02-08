@@ -9,9 +9,13 @@ Add the plugin dependency to your pubspec.yaml and enable it in analysis_options
 analysis_options.yaml:
 
 ```yaml
-analyzer:
-	plugins:
-		- throws_plugin
+plugins:
+  throws_plugin:
+    version: any
+    diagnostics:
+      missing_throws_annotation: error
+      unhandled_throws_call: error
+      unused_throws_annotation: error
 ```
 
 ## Lints
@@ -34,10 +38,11 @@ Place throws.yaml at the package root to extend or override known throwing membe
 
 ```yaml
 throws:
-	useSdkMap: true
-	map:
-		dart:core.Iterable.single:
-			- StateError
+  useSdkMap: true
+  map:
+    dart:core.Iterable.single:
+      - StateError
 ```
 
 If useSdkMap is false, only entries from throws.yaml are used.
+useSdkMap is heuristic only and comes with no guarantees of completeness or accuracy.

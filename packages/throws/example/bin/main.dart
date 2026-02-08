@@ -1,6 +1,6 @@
 import 'package:throws/throws.dart';
 
-@Throws('Parsing input failed', {FormatException, RangeError})
+@Throws('reason', {FormatException, RangeError})
 int parsePositiveInt(String input) {
   final value = int.parse(input);
   if (value < 0) {

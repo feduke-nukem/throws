@@ -121,7 +121,7 @@ class _ThrowsConfig {
 
   const _ThrowsConfig({
     this.map = const {},
-    this.useSdkMap = true,
+    this.useSdkMap = false,
   });
 }
 

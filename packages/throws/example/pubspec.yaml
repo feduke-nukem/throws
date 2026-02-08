@@ -8,5 +8,4 @@ environment:
 
 dependencies:
   lints: ^6.0.0
-  throws:
-    path: ..
+  throws: ^1.0.0-alpha.2

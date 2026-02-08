@@ -13,11 +13,11 @@ Annotate functions that can throw:
 ```dart
 @Throws('Parsing input failed', {FormatException, RangeError})
 int parsePositiveInt(String input) {
-	final value = int.parse(input);
-	if (value < 0) {
-		throw RangeError('Value must be non-negative');
-	}
-	return value;
+  final value = int.parse(input);
+  if (value < 0) {
+    throw RangeError('Value must be non-negative');
+  }
+  return value;
 }
 ```
 
@@ -26,7 +26,7 @@ You can also use the shorthand constant:
 ```dart
 @throws
 void mightThrow() {
-	throw Exception('x');
+  throw Exception('x');
 }
 ```
 

@@ -412,6 +412,25 @@ class _ThrowsExpectedErrorsCollector extends RecursiveAstVisitor<void> {
     super.visitPrefixedIdentifier(node);
   }
 
+  @override
+  void visitThrowExpression(ThrowExpression node) {
+    if (!_isHandledByTryCatch(node)) {
+      final typeName = _typeNameFromExpression(node.expression);
+      if (typeName != null) {
+        _errors.add(typeName);
+      }
+    }
+    super.visitThrowExpression(node);
+  }
+
+  @override
+  void visitRethrowExpression(RethrowExpression node) {
+    if (!_isHandledByTryCatch(node)) {
+      _errors.add('Object');
+    }
+    super.visitRethrowExpression(node);
+  }
+
   void _maybeCollect(AstNode node, Element? element) {
     if (_isHandledByTryCatch(node)) {
       return;
@@ -832,6 +851,11 @@ List<String> _expectedErrorsFromLiteralElements(
 }
 
 String? _typeNameFromExpression(Expression expression) {
+  final staticType = expression.staticType;
+  final staticName = staticType?.getDisplayString(withNullability: false);
+  if (staticName != null && staticName != 'dynamic') {
+    return staticName;
+  }
   if (expression is TypeLiteral) {
     return expression.type.toSource();
   }
