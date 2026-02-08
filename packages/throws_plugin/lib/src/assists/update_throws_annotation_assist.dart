@@ -88,8 +88,7 @@ String? _reasonFromAnnotation(Annotation annotation) {
   }
 
   for (final argument in arguments) {
-    if (argument is NamedExpression &&
-        argument.name.label.name == 'reason') {
+    if (argument is NamedExpression && argument.name.label.name == 'reason') {
       final expression = argument.expression;
       if (expression is StringLiteral) {
         return expression.stringValue;
