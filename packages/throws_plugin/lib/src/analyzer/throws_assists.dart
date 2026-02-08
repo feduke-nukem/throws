@@ -7,167 +7,10 @@ import 'package:analyzer_plugin/utilities/change_builder/change_builder_core.dar
 import 'package:analyzer_plugin/utilities/range_factory.dart';
 import 'package:throws_plugin/src/analyzer/sdk_throws_map.dart';
 
-class AddThrowsAnnotationAssist extends ResolvedCorrectionProducer {
-  static const AssistKind _assistKind = AssistKind(
-    'throws.assist.addThrowsAnnotation',
-    30,
-    'Add @throws annotation',
-  );
-
-  AddThrowsAnnotationAssist({required super.context});
-
-  @override
-  CorrectionApplicability get applicability =>
-      CorrectionApplicability.singleLocation;
-
-  @override
-  AssistKind get assistKind => _assistKind;
-
-  @override
-  Future<void> compute(ChangeBuilder builder) async {
-    try {
-      final functionNode = _findEnclosingFunction(node);
-      if (functionNode == null) {
-        return;
-      }
-
-      final metadata = _getMetadata(functionNode);
-      if (_hasThrowsAnnotationOnNode(metadata)) {
-        return;
-      }
-
-      final body = _getFunctionBody(functionNode);
-      if (body == null || !_needsThrowsAnnotation(body)) {
-        return;
-      }
-
-      final unit = functionNode.thisOrAncestorOfType<CompilationUnit>();
-      if (unit == null) {
-        return;
-      }
-      final localInfo = _collectLocalThrowingInfo(unit);
-      final expectedErrors = _collectExpectedErrors(
-        body,
-        localExpectedErrorsByElement: localInfo.expectedErrorsByElement,
-      );
-
-      final offset = _annotationInsertOffset(functionNode, metadata);
-      await builder.addDartFileEdit(file, (builder) {
-        builder.addInsertion(offset, (builder) {
-          if (expectedErrors.isNotEmpty) {
-            builder.write(
-              '@Throws(\'reason\', {',
-            );
-            builder.write(expectedErrors.join(', '));
-            builder.write('})');
-          } else {
-            builder.write('@throws');
-          }
-          builder.writeln();
-        });
-      });
-    } catch (_) {
-      return;
-    }
-  }
-}
-
-class RemoveThrowsAnnotationAssist extends ResolvedCorrectionProducer {
-  static const AssistKind _assistKind = AssistKind(
-    'throws.assist.removeThrowsAnnotation',
-    30,
-    'Remove @Throws annotation',
-  );
-
-  RemoveThrowsAnnotationAssist({required super.context});
-
-  @override
-  CorrectionApplicability get applicability =>
-      CorrectionApplicability.singleLocation;
-
-  @override
-  AssistKind get assistKind => _assistKind;
-
-  @override
-  Future<void> compute(ChangeBuilder builder) async {
-    try {
-      final annotation = _findThrowsAnnotation(node);
-      if (annotation == null || annotation.isSynthetic) {
-        return;
-      }
-
-      await builder.addDartFileEdit(file, (builder) {
-        builder.addDeletion(range.node(annotation));
-      });
-    } catch (_) {
-      return;
-    }
-  }
-}
-
-class WrapThrowsCallInTryCatchAssist extends ResolvedCorrectionProducer {
-  static const AssistKind _assistKind = AssistKind(
-    'throws.assist.wrapTryCatch',
-    30,
-    'Wrap in try/catch',
-  );
-
-  WrapThrowsCallInTryCatchAssist({required super.context});
-
-  @override
-  CorrectionApplicability get applicability =>
-      CorrectionApplicability.singleLocation;
-
-  @override
-  AssistKind get assistKind => _assistKind;
-
-  @override
-  Future<void> compute(ChangeBuilder builder) async {
-    try {
-      final statement = _findEnclosingStatement(node);
-      if (statement == null || statement.isSynthetic) {
-        return;
-      }
-      if (_isWithinTryStatement(statement)) {
-        return;
-      }
-
-      final expression = _statementExpression(statement);
-      if (expression == null) {
-        return;
-      }
-
-      final expectedErrors = _expressionExpectedErrors(expression, unit);
-      if (expectedErrors == null) {
-        return;
-      }
-
-      final statementSource = statement.toSource().trim();
-      if (statementSource.isEmpty) {
-        return;
-      }
-
-      final replacementRange = utils.getLinesRange(range.node(statement));
-      final indent = utils.getLinePrefix(replacementRange.offset);
-      final errors = expectedErrors.isEmpty ? const ['Object'] : expectedErrors;
-      await builder.addDartFileEdit(file, (builder) {
-        builder.addReplacement(replacementRange, (builder) {
-          builder.writeln('${indent}try {');
-          builder.writeln('$indent  $statementSource');
-          builder.write('$indent}');
-          for (final error in errors) {
-            builder.writeln(' on $error catch (e, stackTrace) {');
-            builder.writeln('$indent  // TODO: handle error');
-            builder.write('$indent}');
-          }
-          builder.writeln();
-        });
-      });
-    } catch (_) {
-      return;
-    }
-  }
-}
+part 'assists/add_throws_annotation_assist.dart';
+part 'assists/remove_throws_annotation_assist.dart';
+part 'assists/update_throws_annotation_assist.dart';
+part 'assists/wrap_throws_call_in_try_catch_assist.dart';
 
 AstNode? _findEnclosingFunction(AstNode node) {
   AstNode? current = node;
@@ -396,7 +239,8 @@ class _ThrowsExpectedErrorsCollector extends RecursiveAstVisitor<void> {
   @override
   void visitMethodInvocation(MethodInvocation node) {
     if (_isErrorThrowWithStackTrace(node)) {
-      if (!_isHandledByTryCatch(node)) {
+      final expectedErrors = _expectedErrorsFromErrorThrowWithStackTrace(node);
+      if (!_isHandledByTryCatch(node, expectedErrors: expectedErrors)) {
         final typeName = _typeNameFromErrorThrowWithStackTrace(node);
         if (typeName != null) {
           _errors.add(typeName);
@@ -447,20 +291,26 @@ class _ThrowsExpectedErrorsCollector extends RecursiveAstVisitor<void> {
   @override
   void visitRethrowExpression(RethrowExpression node) {
     if (!_isHandledByTryCatch(node)) {
-      _errors.add('Object');
+      final catchTypeName = _catchClauseTypeName(node);
+      _errors.add(catchTypeName ?? 'Object');
     }
     super.visitRethrowExpression(node);
   }
 
   void _maybeCollect(AstNode node, Element? element) {
-    if (_isHandledByTryCatch(node)) {
-      return;
-    }
     final expected = _expectedErrorsFromElementOrSdk(element);
     if (expected != null && expected.isNotEmpty) {
+      if (_isHandledByTryCatch(node, expectedErrors: expected.toSet())) {
+        return;
+      }
       _errors.addAll(expected);
       return;
     }
+
+    if (_isHandledByTryCatch(node)) {
+      return;
+    }
+
     final base = element?.baseElement;
     if (base == null) {
       return;
@@ -469,15 +319,27 @@ class _ThrowsExpectedErrorsCollector extends RecursiveAstVisitor<void> {
     if (localExpected == null || localExpected.isEmpty) {
       return;
     }
+    if (_isHandledByTryCatch(node, expectedErrors: localExpected.toSet())) {
+      return;
+    }
     _errors.addAll(localExpected);
   }
 
-  bool _isHandledByTryCatch(AstNode node) {
+  bool _isHandledByTryCatch(
+    AstNode node, {
+    Set<String>? expectedErrors,
+  }) {
     AstNode? current = node.parent;
     while (current != null) {
       if (current is TryStatement) {
-        if (_isWithin(node, current.body) && _tryProvidesHandling(current)) {
-          return true;
+        if (_isWithin(node, current.body)) {
+          if (expectedErrors == null || expectedErrors.isEmpty) {
+            if (_tryProvidesHandling(current)) {
+              return true;
+            }
+          } else if (_tryCatchesAllExpected(current, expectedErrors)) {
+            return true;
+          }
         }
       }
       current = current.parent;
@@ -500,6 +362,31 @@ class _ThrowsExpectedErrorsCollector extends RecursiveAstVisitor<void> {
       }
     }
     return false;
+  }
+
+  bool _tryCatchesAllExpected(
+    TryStatement statement,
+    Set<String> expectedErrors,
+  ) {
+    if (statement.catchClauses.isEmpty) {
+      return false;
+    }
+
+    final covered = <String>{};
+
+    for (final clause in statement.catchClauses) {
+      final typeName = _typeNameFromTypeAnnotation(clause.exceptionType);
+      if (typeName == null) {
+        return true;
+      }
+      if (_isCatchAllType(typeName)) {
+        return true;
+      }
+
+      covered.add(typeName);
+    }
+
+    return expectedErrors.every(covered.contains);
   }
 
   bool _catchAlwaysRethrows(CatchClause clause) {
@@ -547,14 +434,20 @@ class _ThrowsBodyVisitor extends RecursiveAstVisitor<void> {
   @override
   void visitMethodInvocation(MethodInvocation node) {
     if (_isErrorThrowWithStackTrace(node)) {
-      if (!_isHandledByTryCatch(node)) {
+      final expectedErrors = _expectedErrorsFromErrorThrowWithStackTrace(node);
+      if (!_isHandledByTryCatch(node, expectedErrors: expectedErrors)) {
         hasUnhandledThrow = true;
       }
       super.visitMethodInvocation(node);
       return;
     }
     final element = node.methodName.element;
-    if (_isThrowsAnnotatedOrSdk(element) && !_isHandledByTryCatch(node)) {
+    final expected = _expectedErrorsFromElementOrSdk(element);
+    if (_isThrowsAnnotatedOrSdk(element) &&
+        !_isHandledByTryCatch(
+          node,
+          expectedErrors: expected?.toSet(),
+        )) {
       hasUnhandledThrowingCall = true;
     }
     super.visitMethodInvocation(node);
@@ -563,7 +456,12 @@ class _ThrowsBodyVisitor extends RecursiveAstVisitor<void> {
   @override
   void visitFunctionExpressionInvocation(FunctionExpressionInvocation node) {
     final element = node.element;
-    if (_isThrowsAnnotatedOrSdk(element) && !_isHandledByTryCatch(node)) {
+    final expected = _expectedErrorsFromElementOrSdk(element);
+    if (_isThrowsAnnotatedOrSdk(element) &&
+        !_isHandledByTryCatch(
+          node,
+          expectedErrors: expected?.toSet(),
+        )) {
       hasUnhandledThrowingCall = true;
     }
     super.visitFunctionExpressionInvocation(node);
@@ -572,7 +470,12 @@ class _ThrowsBodyVisitor extends RecursiveAstVisitor<void> {
   @override
   void visitInstanceCreationExpression(InstanceCreationExpression node) {
     final element = node.constructorName.element;
-    if (_isThrowsAnnotatedOrSdk(element) && !_isHandledByTryCatch(node)) {
+    final expected = _expectedErrorsFromElementOrSdk(element);
+    if (_isThrowsAnnotatedOrSdk(element) &&
+        !_isHandledByTryCatch(
+          node,
+          expectedErrors: expected?.toSet(),
+        )) {
       hasUnhandledThrowingCall = true;
     }
     super.visitInstanceCreationExpression(node);
@@ -581,7 +484,12 @@ class _ThrowsBodyVisitor extends RecursiveAstVisitor<void> {
   @override
   void visitPropertyAccess(PropertyAccess node) {
     final element = node.propertyName.element;
-    if (_isThrowsAnnotatedOrSdk(element) && !_isHandledByTryCatch(node)) {
+    final expected = _expectedErrorsFromElementOrSdk(element);
+    if (_isThrowsAnnotatedOrSdk(element) &&
+        !_isHandledByTryCatch(
+          node,
+          expectedErrors: expected?.toSet(),
+        )) {
       hasUnhandledThrowingCall = true;
     }
     super.visitPropertyAccess(node);
@@ -590,18 +498,32 @@ class _ThrowsBodyVisitor extends RecursiveAstVisitor<void> {
   @override
   void visitPrefixedIdentifier(PrefixedIdentifier node) {
     final element = node.identifier.element;
-    if (_isThrowsAnnotatedOrSdk(element) && !_isHandledByTryCatch(node)) {
+    final expected = _expectedErrorsFromElementOrSdk(element);
+    if (_isThrowsAnnotatedOrSdk(element) &&
+        !_isHandledByTryCatch(
+          node,
+          expectedErrors: expected?.toSet(),
+        )) {
       hasUnhandledThrowingCall = true;
     }
     super.visitPrefixedIdentifier(node);
   }
 
-  bool _isHandledByTryCatch(AstNode node) {
+  bool _isHandledByTryCatch(
+    AstNode node, {
+    Set<String>? expectedErrors,
+  }) {
     AstNode? current = node.parent;
     while (current != null) {
       if (current is TryStatement) {
-        if (_isWithin(node, current.body) && _tryProvidesHandling(current)) {
-          return true;
+        if (_isWithin(node, current.body)) {
+          if (expectedErrors == null || expectedErrors.isEmpty) {
+            if (_tryProvidesHandling(current)) {
+              return true;
+            }
+          } else if (_tryCatchesAllExpected(current, expectedErrors)) {
+            return true;
+          }
         }
       }
       current = current.parent;
@@ -624,6 +546,35 @@ class _ThrowsBodyVisitor extends RecursiveAstVisitor<void> {
       }
     }
     return false;
+  }
+
+  bool _tryCatchesAllExpected(
+    TryStatement statement,
+    Set<String> expectedErrors,
+  ) {
+    if (statement.catchClauses.isEmpty) {
+      return false;
+    }
+
+    final covered = <String>{};
+
+    for (final clause in statement.catchClauses) {
+      if (_catchAlwaysRethrows(clause)) {
+        continue;
+      }
+
+      final typeName = _typeNameFromTypeAnnotation(clause.exceptionType);
+      if (typeName == null) {
+        return true;
+      }
+      if (_isCatchAllType(typeName)) {
+        return true;
+      }
+
+      covered.add(typeName);
+    }
+
+    return expectedErrors.every(covered.contains);
   }
 
   bool _catchAlwaysRethrows(CatchClause clause) {
@@ -893,13 +844,31 @@ List<String> _expectedErrorsFromLiteralElements(
 }
 
 String? _typeNameFromExpression(Expression expression) {
+  if (expression is TypeLiteral) {
+    return expression.type.toSource();
+  }
+  if (expression is SimpleIdentifier) {
+    final element = expression.element;
+    if (element is ClassElement ||
+        element is TypeAliasElement ||
+        element is EnumElement ||
+        element is ExtensionTypeElement) {
+      return expression.name;
+    }
+  }
+  if (expression is PrefixedIdentifier) {
+    final element = expression.identifier.element;
+    if (element is ClassElement ||
+        element is TypeAliasElement ||
+        element is EnumElement ||
+        element is ExtensionTypeElement) {
+      return expression.identifier.name;
+    }
+  }
   final staticType = expression.staticType;
   final staticName = staticType?.getDisplayString(withNullability: false);
   if (staticName != null && staticName != 'dynamic') {
     return staticName;
-  }
-  if (expression is TypeLiteral) {
-    return expression.type.toSource();
   }
   if (expression is SimpleIdentifier) {
     return expression.name;
@@ -937,6 +906,40 @@ String? _typeNameFromErrorThrowWithStackTrace(MethodInvocation node) {
     return null;
   }
   return _typeNameFromExpression(args.first);
+}
+
+Set<String> _expectedErrorsFromErrorThrowWithStackTrace(MethodInvocation node) {
+  final typeName = _typeNameFromErrorThrowWithStackTrace(node);
+  if (typeName == null) {
+    return const {};
+  }
+  return {typeName};
+}
+
+String? _typeNameFromTypeAnnotation(TypeAnnotation? annotation) {
+  if (annotation == null) {
+    return null;
+  }
+  final type = annotation.type;
+  if (type != null) {
+    return type.getDisplayString(withNullability: false);
+  }
+  return annotation.toSource();
+}
+
+bool _isCatchAllType(String typeName) {
+  return typeName == 'Object' || typeName == 'dynamic';
+}
+
+String? _catchClauseTypeName(AstNode node) {
+  AstNode? current = node.parent;
+  while (current != null) {
+    if (current is CatchClause) {
+      return _typeNameFromTypeAnnotation(current.exceptionType);
+    }
+    current = current.parent;
+  }
+  return null;
 }
 
 List<String>? _expectedErrorsFromElementOrSdk(Element? element) {

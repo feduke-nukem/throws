@@ -18,5 +18,6 @@ class ThrowsAnalyzerPlugin extends Plugin {
     registry.registerAssist(AddThrowsAnnotationAssist.new);
     registry.registerAssist(RemoveThrowsAnnotationAssist.new);
     registry.registerAssist(WrapThrowsCallInTryCatchAssist.new);
+    registry.registerAssist(UpdateThrowsAnnotationAssist.new);
   }
 }

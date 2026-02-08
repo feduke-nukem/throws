@@ -5,4 +5,9 @@ class RepoImpl implements IRepository {
   Future<List<String>> getSettings() {
     throw ArgumentError();
   }
+
+  @override
+  Future<int> getNumber() {
+    throw UnimplementedError();
+  }
 }

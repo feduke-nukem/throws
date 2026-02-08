@@ -5,11 +5,30 @@ import 'package:analyzer_testing/analysis_rule/analysis_rule.dart';
 import 'package:test_reflective_loader/test_reflective_loader.dart';
 import 'package:throws_plugin/src/analyzer/throws_rules.dart';
 
+const _coreStubs = '''
+class Exception {
+  const Exception([String? message]);
+}
+
+class ArgumentError implements Exception {
+  const ArgumentError([Object? message]);
+}
+
+class FormatException implements Exception {
+  const FormatException([String? message]);
+}
+
+class RangeError implements Exception {
+  const RangeError([String? message]);
+}
+''';
+
 void main() {
   defineReflectiveSuite(() {
     defineReflectiveTests(MissingThrowsAnnotationRuleTest);
+    defineReflectiveTests(MissingErrorHandlingRuleTest);
+    defineReflectiveTests(ThrowsAnnotationMismatchRuleTest);
     defineReflectiveTests(IntroducedThrowsInOverrideRuleTest);
-    defineReflectiveTests(UnhandledThrowsCallRuleTest);
     defineReflectiveTests(UnusedThrowsAnnotationRuleTest);
   });
 }
@@ -26,10 +45,17 @@ class MissingThrowsAnnotationRuleTest extends AnalysisRuleTest {
 const throws = Throws();
 
 class Throws {
-  const Throws([String? reason, Set<Type> expectedErrors = const {}]);
+  final String? reason;
+  final Set<Type> expectedErrors;
+
+  const Throws([
+    this.reason,
+    this.expectedErrors = const {},
+  ]);
+
   const Throws.named({
-    String? reason,
-    Set<Type> expectedErrors = const {},
+    this.reason,
+    this.expectedErrors = const {},
   });
 }
 ''');
@@ -114,10 +140,17 @@ class IntroducedThrowsInOverrideRuleTest extends AnalysisRuleTest {
 const throws = Throws();
 
 class Throws {
-  const Throws([String? reason, Set<Type> expectedErrors = const {}]);
+  final String? reason;
+  final Set<Type> expectedErrors;
+
+  const Throws([
+    this.reason,
+    this.expectedErrors = const {},
+  ]);
+
   const Throws.named({
-    String? reason,
-    Set<Type> expectedErrors = const {},
+    this.reason,
+    this.expectedErrors = const {},
   });
 }
 ''');
@@ -187,21 +220,28 @@ class B implements A {
 }
 
 @reflectiveTest
-class UnhandledThrowsCallRuleTest extends AnalysisRuleTest {
+class MissingErrorHandlingRuleTest extends AnalysisRuleTest {
   @override
-  String get analysisRule => 'unhandled_throws_call';
+  String get analysisRule => 'missing_error_handling';
 
   @override
   void setUp() {
-    Registry.ruleRegistry.registerLintRule(UnhandledThrowsCallRule());
+    Registry.ruleRegistry.registerLintRule(MissingErrorHandlingRule());
     newPackage('throws').addFile('lib/throws.dart', r'''
 const throws = Throws();
 
 class Throws {
-  const Throws([String? reason, Set<Type> expectedErrors = const {}]);
+  final String? reason;
+  final Set<Type> expectedErrors;
+
+  const Throws([
+    this.reason,
+    this.expectedErrors = const {},
+  ]);
+
   const Throws.named({
-    String? reason,
-    Set<Type> expectedErrors = const {},
+    this.reason,
+    this.expectedErrors = const {},
   });
 }
 ''');
@@ -210,7 +250,7 @@ class Throws {
 
   @override
   Future<void> tearDown() async {
-    Registry.ruleRegistry.unregisterLintRule(UnhandledThrowsCallRule());
+    Registry.ruleRegistry.unregisterLintRule(MissingErrorHandlingRule());
     await super.tearDown();
   }
 
@@ -311,6 +351,47 @@ void main() {
     );
   }
 
+  void test_reports_unhandled_when_try_catch_partial() async {
+    await assertDiagnostics(
+      '''import 'package:throws/throws.dart';
+$_coreStubs
+@Throws('Delegates', {FormatException, RangeError})
+int delegatedParse(String input) {
+  throw FormatException('x');
+}
+
+void f() {
+  try {
+    delegatedParse('7');
+  } on FormatException catch (_) {
+    // handle
+  }
+}''',
+      [lint(501, 14)],
+    );
+  }
+
+  void test_no_lint_when_try_catch_covers_all() async {
+    await assertNoDiagnostics(
+      '''import 'package:throws/throws.dart';
+$_coreStubs
+@Throws('Delegates', {FormatException, RangeError})
+int delegatedParse(String input) {
+  throw FormatException('x');
+}
+
+void f() {
+  try {
+    delegatedParse('7');
+  } on FormatException catch (_) {
+    // handle
+  } on RangeError catch (_) {
+    // handle
+  }
+}''',
+    );
+  }
+
   void test_reports_throw_with_stack_trace_call() async {
     await assertDiagnostics(
       r'''class Error {
@@ -335,6 +416,87 @@ void main() {
 }
 
 @reflectiveTest
+class ThrowsAnnotationMismatchRuleTest extends AnalysisRuleTest {
+  @override
+  String get analysisRule => 'throws_annotation_mismatch';
+
+  @override
+  void setUp() {
+    Registry.ruleRegistry.registerLintRule(ThrowsAnnotationMismatchRule());
+    newPackage('throws').addFile('lib/throws.dart', r'''
+const throws = Throws();
+
+class Throws {
+  final String? reason;
+  final Set<Type> expectedErrors;
+
+  const Throws([
+    this.reason,
+    this.expectedErrors = const {},
+  ]);
+
+  const Throws.named({
+    this.reason,
+    this.expectedErrors = const {},
+  });
+}
+''');
+    super.setUp();
+  }
+
+  @override
+  Future<void> tearDown() async {
+    Registry.ruleRegistry.unregisterLintRule(ThrowsAnnotationMismatchRule());
+    await super.tearDown();
+  }
+
+  void test_reports_mismatch_when_missing_error() async {
+    await assertDiagnostics(
+      '''import 'package:throws/throws.dart';
+$_coreStubs
+@Throws('reason', {FormatException})
+void f() {
+  throw RangeError('x');
+}''',
+      [lint(400, 1)],
+    );
+  }
+
+  void test_no_lint_when_matches() async {
+    await assertNoDiagnostics(
+      '''import 'package:throws/throws.dart';
+$_coreStubs
+@Throws('reason', {FormatException})
+void f() {
+  throw FormatException('x');
+}''',
+    );
+  }
+
+  void test_no_lint_when_allow_any() async {
+    await assertNoDiagnostics(
+      '''import 'package:throws/throws.dart';
+$_coreStubs
+@throws
+void f() {
+  throw FormatException('x');
+}''',
+    );
+  }
+
+  void test_no_lint_when_exception_type_literal() async {
+    await assertNoDiagnostics(
+      '''import 'package:throws/throws.dart';
+$_coreStubs
+@Throws('reason', {Exception})
+void f() {
+  throw Exception('x');
+}''',
+    );
+  }
+}
+
+@reflectiveTest
 class UnusedThrowsAnnotationRuleTest extends AnalysisRuleTest {
   @override
   String get analysisRule => 'unused_throws_annotation';
@@ -346,10 +508,17 @@ class UnusedThrowsAnnotationRuleTest extends AnalysisRuleTest {
 const throws = Throws();
 
 class Throws {
-  const Throws([String? reason, Set<Type> expectedErrors = const {}]);
+  final String? reason;
+  final Set<Type> expectedErrors;
+
+  const Throws([
+    this.reason,
+    this.expectedErrors = const {},
+  ]);
+
   const Throws.named({
-    String? reason,
-    Set<Type> expectedErrors = const {},
+    this.reason,
+    this.expectedErrors = const {},
   });
 }
 ''');
