@@ -158,14 +158,16 @@ class _FunctionBodyVisitor extends RecursiveAstVisitor<void> {
       return;
     }
     final element = node.methodName.element;
-    if (_includeAnnotatedAndSdk &&
-        isThrowsAnnotatedOrSdk(element) &&
-        !node.isHandledByTryCatch(expectedErrorsFromElementOrSdk(element))) {
-      _summary.hasUnhandledThrowingCall = true;
-      _summary.unhandledThrowingCallNodes.add(node.methodName);
-      _summary.thrownErrors.addAll(expectedErrorsFromElementOrSdk(element));
+    if (_includeAnnotatedAndSdk && isThrowsAnnotatedOrSdk(element)) {
+      _registerUnhandledThrowingCall(
+        node,
+        node.methodName,
+        expectedErrorsFromElementOrSdk(element),
+        addThrownErrors: true,
+      );
     }
-    if (_isLocalThrowingElement(element) && !node.isHandledByTryCatch()) {
+    if (_isLocalThrowingElement(element) &&
+        !_isHandledLocalThrowingCall(node, element)) {
       _summary.hasUnhandledThrowingCall = true;
       _summary.unhandledThrowingCallNodes.add(node.methodName);
     }
@@ -175,14 +177,16 @@ class _FunctionBodyVisitor extends RecursiveAstVisitor<void> {
   @override
   void visitFunctionExpressionInvocation(FunctionExpressionInvocation node) {
     final element = node.element;
-    if (_includeAnnotatedAndSdk &&
-        isThrowsAnnotatedOrSdk(element) &&
-        !node.isHandledByTryCatch(expectedErrorsFromElementOrSdk(element))) {
-      _summary.hasUnhandledThrowingCall = true;
-      _summary.unhandledThrowingCallNodes.add(node);
-      _summary.thrownErrors.addAll(expectedErrorsFromElementOrSdk(element));
+    if (_includeAnnotatedAndSdk && isThrowsAnnotatedOrSdk(element)) {
+      _registerUnhandledThrowingCall(
+        node,
+        node,
+        expectedErrorsFromElementOrSdk(element),
+        addThrownErrors: true,
+      );
     }
-    if (_isLocalThrowingElement(element) && !node.isHandledByTryCatch()) {
+    if (_isLocalThrowingElement(element) &&
+        !_isHandledLocalThrowingCall(node, element)) {
       _summary.hasUnhandledThrowingCall = true;
       _summary.unhandledThrowingCallNodes.add(node);
     }
@@ -192,14 +196,16 @@ class _FunctionBodyVisitor extends RecursiveAstVisitor<void> {
   @override
   void visitInstanceCreationExpression(InstanceCreationExpression node) {
     final element = node.constructorName.element;
-    if (_includeAnnotatedAndSdk &&
-        isThrowsAnnotatedOrSdk(element) &&
-        !node.isHandledByTryCatch(expectedErrorsFromElementOrSdk(element))) {
-      _summary.hasUnhandledThrowingCall = true;
-      _summary.unhandledThrowingCallNodes.add(node.constructorName);
-      _summary.thrownErrors.addAll(expectedErrorsFromElementOrSdk(element));
+    if (_includeAnnotatedAndSdk && isThrowsAnnotatedOrSdk(element)) {
+      _registerUnhandledThrowingCall(
+        node,
+        node.constructorName,
+        expectedErrorsFromElementOrSdk(element),
+        addThrownErrors: true,
+      );
     }
-    if (_isLocalThrowingElement(element) && !node.isHandledByTryCatch()) {
+    if (_isLocalThrowingElement(element) &&
+        !_isHandledLocalThrowingCall(node, element)) {
       _summary.hasUnhandledThrowingCall = true;
       _summary.unhandledThrowingCallNodes.add(node.constructorName);
     }
@@ -209,14 +215,16 @@ class _FunctionBodyVisitor extends RecursiveAstVisitor<void> {
   @override
   void visitPropertyAccess(PropertyAccess node) {
     final element = node.propertyName.element;
-    if (_includeAnnotatedAndSdk &&
-        isThrowsAnnotatedOrSdk(element) &&
-        !node.isHandledByTryCatch(expectedErrorsFromElementOrSdk(element))) {
-      _summary.hasUnhandledThrowingCall = true;
-      _summary.unhandledThrowingCallNodes.add(node.propertyName);
-      _summary.thrownErrors.addAll(expectedErrorsFromElementOrSdk(element));
+    if (_includeAnnotatedAndSdk && isThrowsAnnotatedOrSdk(element)) {
+      _registerUnhandledThrowingCall(
+        node,
+        node.propertyName,
+        expectedErrorsFromElementOrSdk(element),
+        addThrownErrors: true,
+      );
     }
-    if (_isLocalThrowingElement(element) && !node.isHandledByTryCatch()) {
+    if (_isLocalThrowingElement(element) &&
+        !_isHandledLocalThrowingCall(node, element)) {
       _summary.hasUnhandledThrowingCall = true;
       _summary.unhandledThrowingCallNodes.add(node.propertyName);
     }
@@ -226,14 +234,16 @@ class _FunctionBodyVisitor extends RecursiveAstVisitor<void> {
   @override
   void visitPrefixedIdentifier(PrefixedIdentifier node) {
     final element = node.identifier.element;
-    if (_includeAnnotatedAndSdk &&
-        isThrowsAnnotatedOrSdk(element) &&
-        !node.isHandledByTryCatch(expectedErrorsFromElementOrSdk(element))) {
-      _summary.hasUnhandledThrowingCall = true;
-      _summary.unhandledThrowingCallNodes.add(node.identifier);
-      _summary.thrownErrors.addAll(expectedErrorsFromElementOrSdk(element));
+    if (_includeAnnotatedAndSdk && isThrowsAnnotatedOrSdk(element)) {
+      _registerUnhandledThrowingCall(
+        node,
+        node.identifier,
+        expectedErrorsFromElementOrSdk(element),
+        addThrownErrors: true,
+      );
     }
-    if (_isLocalThrowingElement(element) && !node.isHandledByTryCatch()) {
+    if (_isLocalThrowingElement(element) &&
+        !_isHandledLocalThrowingCall(node, element)) {
       _summary.hasUnhandledThrowingCall = true;
       _summary.unhandledThrowingCallNodes.add(node.identifier);
     }
@@ -248,5 +258,48 @@ class _FunctionBodyVisitor extends RecursiveAstVisitor<void> {
       return false;
     }
     return _localThrowingElements.contains(element.baseElement);
+  }
+
+  bool _isHandledThrowingCall(AstNode node, Set<String> expectedErrors) {
+    if (expectedErrors.isEmpty) {
+      return node.isWithinTryWithCatch;
+    }
+    return node.unhandledExpectedErrors(expectedErrors).isEmpty;
+  }
+
+  bool _isHandledLocalThrowingCall(AstNode node, Element? element) {
+    final expectedErrors = expectedErrorsFromElementOrSdk(element);
+    if (expectedErrors.isNotEmpty) {
+      return _isHandledThrowingCall(node, expectedErrors);
+    }
+    return node.isHandledByTryCatch();
+  }
+
+  bool _registerUnhandledThrowingCall(
+    AstNode node,
+    AstNode reportNode,
+    Set<String> expectedErrors, {
+    required bool addThrownErrors,
+  }) {
+    if (expectedErrors.isEmpty) {
+      if (!node.isWithinTryWithCatch) {
+        _summary.hasUnhandledThrowingCall = true;
+        _summary.unhandledThrowingCallNodes.add(reportNode);
+        return true;
+      }
+      return false;
+    }
+
+    final unhandled = node.unhandledExpectedErrors(expectedErrors);
+    if (unhandled.isEmpty) {
+      return false;
+    }
+
+    _summary.hasUnhandledThrowingCall = true;
+    _summary.unhandledThrowingCallNodes.add(reportNode);
+    if (addThrownErrors) {
+      _summary.thrownErrors.addAll(unhandled);
+    }
+    return true;
   }
 }

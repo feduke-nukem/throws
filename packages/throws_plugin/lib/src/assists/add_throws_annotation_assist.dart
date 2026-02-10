@@ -61,7 +61,7 @@ class AddThrowsAnnotationAssist extends ResolvedCorrectionProducer {
             builder.write(expectedErrors.join(', '));
             builder.write('})');
           } else {
-            builder.write('@${ThrowsAnnotation.nameCapitalized}');
+            builder.write('@${ThrowsAnnotation.name}');
           }
           builder.writeln();
         });

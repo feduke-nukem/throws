@@ -1,3 +1,10 @@
+## 1.0.0-alpha.9
+- Improves missing clauses and try/catch
+- Improves unhandled function linting
+
+## 1.0.0-alpha.8
+- Fix false linting of function within try/catch
+
 ## 1.0.0-alpha.7
 - Adds new assists
 - Fix missing clauses

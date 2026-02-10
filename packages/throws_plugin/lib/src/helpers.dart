@@ -326,3 +326,23 @@ bool isErrorThrowWithStackTrace(MethodInvocation node) {
 bool isCatchAllType(String typeName) {
   return typeName == 'Object' || typeName == 'dynamic';
 }
+
+List<String>? annotatedErrorsForEnclosingFunction(AstNode node) {
+  final function = node.thisOrAncestorOfType<FunctionDeclaration>();
+  if (function != null) {
+    if (!hasThrowsAnnotationOnNode(function.metadata)) {
+      return null;
+    }
+    return expectedErrorsFromMetadata(function.metadata);
+  }
+
+  final method = node.thisOrAncestorOfType<MethodDeclaration>();
+  if (method != null) {
+    if (!hasThrowsAnnotationOnNode(method.metadata)) {
+      return null;
+    }
+    return expectedErrorsFromMetadata(method.metadata);
+  }
+
+  return null;
+}

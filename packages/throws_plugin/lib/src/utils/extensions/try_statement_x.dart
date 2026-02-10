@@ -37,10 +37,35 @@ extension TryStatementX on TryStatement {
 
     return expectedErrors.every(covered.contains);
   }
+
+  Set<String> handledErrors(Set<String> expectedErrors) {
+    if (catchClauses.isEmpty || expectedErrors.isEmpty) {
+      return const {};
+    }
+
+    final handled = <String>{};
+
+    for (final clause in catchClauses) {
+      if (_catchAlwaysRethrows(clause)) {
+        continue;
+      }
+
+      final typeName = clause.exceptionType?.typeName;
+      if (typeName == null || typeName == 'Object' || typeName == 'dynamic') {
+        return expectedErrors.toSet();
+      }
+
+      if (expectedErrors.contains(typeName)) {
+        handled.add(typeName);
+      }
+    }
+
+    return handled;
+  }
 }
 
 bool _catchAlwaysRethrows(CatchClause clause) {
-  final visitor = ThrowFinder();
+  final visitor = RethrowFinder();
   clause.body.accept(visitor);
-  return visitor.foundThrow;
+  return visitor.foundRethrow;
 }

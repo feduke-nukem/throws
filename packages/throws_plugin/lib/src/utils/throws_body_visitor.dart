@@ -167,10 +167,6 @@ class ThrowsBodyVisitor extends RecursiveAstVisitor<void> {
     final covered = <String>{};
 
     for (final clause in statement.catchClauses) {
-      if (_catchAlwaysRethrows(clause)) {
-        continue;
-      }
-
       final typeName = clause.exceptionType?.typeName;
       if (typeName == null) {
         return true;
@@ -186,8 +182,8 @@ class ThrowsBodyVisitor extends RecursiveAstVisitor<void> {
   }
 
   bool _catchAlwaysRethrows(CatchClause clause) {
-    final visitor = ThrowFinder();
+    final visitor = RethrowFinder();
     clause.body.accept(visitor);
-    return visitor.foundThrow;
+    return visitor.foundRethrow;
   }
 }

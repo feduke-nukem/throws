@@ -45,13 +45,33 @@ class _Visitor extends SimpleAstVisitor<void> {
     final summaries = ThrowsAnalyzer().analyze(node);
 
     for (final summary in summaries) {
-      if (!summary.hasThrowsAnnotation &&
-          summary.unhandledThrowingCallNodes.isNotEmpty) {
+      if (summary.unhandledThrowingCallNodes.isEmpty) {
+        continue;
+      }
+
+      if (!summary.hasThrowsAnnotation) {
         if (!summary.isCoveredByInheritedThrows) {
           for (final node in summary.unhandledThrowingCallNodes) {
             rule.reportAtNode(node);
           }
         }
+        continue;
+      }
+
+      if (summary.allowAnyExpectedErrors) {
+        continue;
+      }
+
+      final annotated = summary.annotatedExpectedErrors.toSet();
+      final hasMissingErrors = summary.thrownErrors.any(
+        (error) => !annotated.contains(error),
+      );
+      if (!hasMissingErrors) {
+        continue;
+      }
+
+      for (final node in summary.unhandledThrowingCallNodes) {
+        rule.reportAtNode(node);
       }
     }
   }

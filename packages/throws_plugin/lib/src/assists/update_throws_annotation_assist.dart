@@ -60,13 +60,16 @@ class UpdateThrowsAnnotationAssist extends ResolvedCorrectionProducer {
         body,
         localExpectedErrorsByElement: localInfo.expectedErrorsByElement,
       );
-      final reason = _reasonFromAnnotation(targetAnnotation) ?? 'reason';
+      final reason = _reasonFromAnnotation(targetAnnotation);
+      final reasonStr = reason != null
+          ? 'reason: ${_stringLiteral(reason)}, '
+          : '';
 
       await builder.addDartFileEdit(file, (builder) {
         builder.addReplacement(range.node(targetAnnotation), (builder) {
           if (expectedErrors.isNotEmpty) {
             builder.write(
-              '@${ThrowsAnnotation.nameCapitalized}(reason: ${_stringLiteral(reason)}, errors: {',
+              '@${ThrowsAnnotation.nameCapitalized}(${reasonStr}errors: {',
             );
             builder.write(expectedErrors.join(', '));
             builder.write('})');

@@ -50,6 +50,19 @@ extension AstNodeX on AstNode {
     return false;
   }
 
+  bool get isWithinTryWithCatch {
+    AstNode? current = parent;
+    while (current != null) {
+      if (current is TryStatement) {
+        if (current.catchClauses.isNotEmpty && isWithin(current.body)) {
+          return true;
+        }
+      }
+      current = current.parent;
+    }
+    return false;
+  }
+
   List<Annotation> get metadata => switch (this) {
     FunctionDeclaration(:final metadata) => metadata,
     MethodDeclaration(:final metadata) => metadata,
@@ -113,6 +126,28 @@ extension AstNodeX on AstNode {
       current = current.parent;
     }
     return false;
+  }
+
+  Set<String> unhandledExpectedErrors(Set<String> expectedErrors) {
+    if (expectedErrors.isEmpty) {
+      return const {};
+    }
+
+    final remaining = expectedErrors.toSet();
+    AstNode? current = parent;
+
+    while (current != null) {
+      if (current is TryStatement && isWithin(current.body)) {
+        final handled = current.handledErrors(remaining);
+        remaining.removeAll(handled);
+        if (remaining.isEmpty) {
+          return remaining;
+        }
+      }
+      current = current.parent;
+    }
+
+    return remaining;
   }
 
   bool isWithin(AstNode container) {

@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:throws/throws.dart';
 
 @Throws(errors: {RangeError})
@@ -31,18 +33,21 @@ abstract interface class A {
 class B implements A {
   @override
   void doSome() {
-    print(delegatedParse('7'));
+    try {
+      throwing();
+    } on ArgumentError catch (e, stackTrace) {
+      // TODO: handle error
+    } on Exception catch (e, stackTrace) {}
   }
 }
 
+@Throws(errors: {Exception})
 void main() {
   try {
-    print(delegatedParse('7'));
-  } on RangeError catch (e, stackTrace) {
+    throwing();
+  } on ArgumentError catch (e, stackTrace) {
     // TODO: handle error
-  } on Object catch (e, stackTrace) {
-    // TODO: handle error
-  }
+  } on Exception catch (e, stackTrace) {}
 }
 
 int getSingle() {
@@ -56,7 +61,9 @@ int errorThrowWithStackTrace() {
   Error.throwWithStackTrace(Exception(), StackTrace.current);
 }
 
-@Throws(errors: {ArgumentError})
+@Throws(errors: {ArgumentError, Exception})
 int throwing() {
-  throw ArgumentError();
+  if (Random().nextBool()) throw ArgumentError();
+
+  throw Exception();
 }

@@ -79,8 +79,8 @@ class AddDefaultCatchClauseAssist extends ResolvedCorrectionProducer {
   }
 
   bool _catchAlwaysRethrows(CatchClause clause) {
-    final visitor = ThrowFinder();
+    final visitor = RethrowFinder();
     clause.body.accept(visitor);
-    return visitor.foundThrow;
+    return visitor.foundRethrow;
   }
 }

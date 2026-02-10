@@ -29,6 +29,20 @@ class ThrowFinder extends RecursiveAstVisitor<void> {
   }
 }
 
+class RethrowFinder extends RecursiveAstVisitor<void> {
+  bool foundRethrow = false;
+
+  @override
+  void visitRethrowExpression(RethrowExpression node) {
+    foundRethrow = true;
+  }
+
+  @override
+  void visitFunctionExpression(FunctionExpression node) {
+    // Ignore nested functions.
+  }
+}
+
 bool _isErrorThrowWithStackTrace(MethodInvocation node) {
   if (node.methodName.name != 'throwWithStackTrace') {
     return false;

@@ -190,8 +190,8 @@ class ThrowsExpectedErrorsCollector extends RecursiveAstVisitor<void> {
   }
 
   bool _catchAlwaysRethrows(CatchClause clause) {
-    final visitor = ThrowFinder();
+    final visitor = RethrowFinder();
     clause.body.accept(visitor);
-    return visitor.foundThrow;
+    return visitor.foundRethrow;
   }
 }

@@ -2,6 +2,7 @@ import 'package:analysis_server_plugin/edit/dart/correction_producer.dart';
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer_plugin/utilities/assist/assist.dart';
 import 'package:analyzer_plugin/utilities/change_builder/change_builder_core.dart';
+import 'package:throws_plugin/src/helpers.dart';
 import 'package:throws_plugin/src/utils/extensions/compilation_unit_x.dart';
 import 'package:throws_plugin/src/utils/extensions/type_annotation_x.dart';
 import 'package:throws_plugin/src/utils/throw_finder.dart';
@@ -44,12 +45,26 @@ class AddMissingCatchClausesAssist extends ResolvedCorrectionProducer {
         return;
       }
 
+      final annotatedErrors = annotatedErrorsForEnclosingFunction(tryStatement);
+      if (annotatedErrors != null && annotatedErrors.isEmpty) {
+        return;
+      }
+
+      final filteredExpectedErrors = annotatedErrors == null
+          ? expectedErrors
+          : expectedErrors
+                .where((error) => !annotatedErrors.contains(error))
+                .toList();
+      if (filteredExpectedErrors.isEmpty) {
+        return;
+      }
+
       final handledErrors = _handledErrors(tryStatement);
       if (handledErrors == null) {
         return;
       }
 
-      final missingErrors = expectedErrors
+      final missingErrors = filteredExpectedErrors
           .where((error) => !handledErrors.contains(error))
           .toList();
       if (missingErrors.isEmpty) {
@@ -109,8 +124,8 @@ class AddMissingCatchClausesAssist extends ResolvedCorrectionProducer {
   }
 
   bool _catchAlwaysRethrows(CatchClause clause) {
-    final visitor = ThrowFinder();
+    final visitor = RethrowFinder();
     clause.body.accept(visitor);
-    return visitor.foundThrow;
+    return visitor.foundRethrow;
   }
 }
