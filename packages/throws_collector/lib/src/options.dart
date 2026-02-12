@@ -8,6 +8,9 @@ enum OutputFormat { dart, json, yaml }
 
 const _configFileName = 'throws_collector.yaml';
 const outputDirName = 'throws_collector_gen';
+const _configOutputDirKey = 'output_dir';
+const _defaultDartSdkOutput = 'dart_sdk_errors.yaml';
+const _defaultFlutterOutput = 'flutter_errors.yaml';
 
 class CollectorConfig {
   final String packageRoot;
@@ -26,8 +29,13 @@ class CollectorConfig {
 class CollectorInput {
   final String outputFile;
   final InputSource source;
+  final bool runPubGet;
 
-  const CollectorInput({required this.outputFile, required this.source});
+  const CollectorInput({
+    required this.outputFile,
+    required this.source,
+    required this.runPubGet,
+  });
 }
 
 sealed class InputSource {
@@ -38,6 +46,14 @@ class LocalInputSource extends InputSource {
   final String path;
 
   const LocalInputSource(this.path);
+}
+
+class DartSdkInputSource extends InputSource {
+  const DartSdkInputSource();
+}
+
+class FlutterSdkInputSource extends InputSource {
+  const FlutterSdkInputSource();
 }
 
 class GitInputSource extends InputSource {
@@ -60,11 +76,12 @@ CollectorConfig parseArgs(List<String> args) {
 
   final packageRoot = _findPackageRoot(Directory.current.path);
   final resolvedRoot = packageRoot ?? Directory.current.path;
-  final outputDir = p.join(resolvedRoot, outputDirName);
+  final configDoc = packageRoot == null ? null : _loadConfigDoc(packageRoot);
+  final outputDir = _readOutputDir(configDoc, resolvedRoot);
 
   final inputs = packageRoot == null
       ? const <CollectorInput>[]
-      : _loadInputs(packageRoot);
+      : _loadInputs(configDoc);
 
   return CollectorConfig(
     packageRoot: resolvedRoot,
@@ -88,6 +105,7 @@ String usage() {
     'Config:',
     '  Place throws_collector.yaml at the package root.',
     '  Output is written to $outputDirName/.',
+    '  Override output_dir to change the output directory.',
   ].join(Platform.lineTerminator);
 }
 
@@ -167,14 +185,8 @@ String _toLowerCamelCase(String value) {
   return buffer.toString();
 }
 
-List<CollectorInput> _loadInputs(String packageRoot) {
-  final configFile = File(p.join(packageRoot, _configFileName));
-  if (!configFile.existsSync()) {
-    return const <CollectorInput>[];
-  }
-
-  final yamlDoc = loadYaml(configFile.readAsStringSync());
-  if (yamlDoc is! YamlMap) {
+List<CollectorInput> _loadInputs(YamlMap? yamlDoc) {
+  if (yamlDoc == null) {
     return const <CollectorInput>[];
   }
 
@@ -185,28 +197,101 @@ List<CollectorInput> _loadInputs(String packageRoot) {
 
   final inputs = <CollectorInput>[];
   for (final item in inputNode) {
+    if (item is String) {
+      final shorthand = _parseShorthandInput(item);
+      if (shorthand != null) {
+        inputs.add(shorthand);
+      }
+      continue;
+    }
     if (item is! YamlMap || item.length != 1) {
       continue;
     }
     final entry = item.entries.first;
-    final outputFile = entry.key is String ? entry.key as String : null;
-    if (outputFile == null || outputFile.isEmpty) {
+    final key = entry.key is String ? entry.key as String : null;
+    if (key == null || key.isEmpty) {
       continue;
     }
     if (entry.value is! YamlMap) {
       continue;
     }
-    final source = _parseInputSource(entry.value as YamlMap);
+    final mapValue = entry.value as YamlMap;
+    if (key == 'dart_sdk') {
+      final outputFile = _readString(mapValue['output']);
+      if (outputFile == null || outputFile.isEmpty) {
+        continue;
+      }
+      inputs.add(
+        CollectorInput(
+          outputFile: outputFile,
+          source: const DartSdkInputSource(),
+          runPubGet: false,
+        ),
+      );
+      continue;
+    }
+    if (key == 'flutter_sdk') {
+      final outputFile = _readString(mapValue['output']);
+      if (outputFile == null || outputFile.isEmpty) {
+        continue;
+      }
+      inputs.add(
+        CollectorInput(
+          outputFile: outputFile,
+          source: const FlutterSdkInputSource(),
+          runPubGet: false,
+        ),
+      );
+      continue;
+    }
+    final outputFile = key;
+    final source = _parseInputSource(mapValue);
     if (source == null) {
       continue;
     }
-    inputs.add(CollectorInput(outputFile: outputFile, source: source));
+    final runPubGet = _readBool(mapValue['run_pub_get']) ?? true;
+    inputs.add(
+      CollectorInput(
+        outputFile: outputFile,
+        source: source,
+        runPubGet: runPubGet,
+      ),
+    );
   }
 
   return inputs;
 }
 
+YamlMap? _loadConfigDoc(String packageRoot) {
+  final configFile = File(p.join(packageRoot, _configFileName));
+  if (!configFile.existsSync()) {
+    return null;
+  }
+  final yamlDoc = loadYaml(configFile.readAsStringSync());
+  if (yamlDoc is! YamlMap) {
+    return null;
+  }
+  return yamlDoc;
+}
+
+String _readOutputDir(YamlMap? yamlDoc, String packageRoot) {
+  if (yamlDoc == null) {
+    return p.join(packageRoot, outputDirName);
+  }
+  final value = _readString(yamlDoc[_configOutputDirKey]);
+  if (value == null) {
+    return p.join(packageRoot, outputDirName);
+  }
+  return _resolvePath(packageRoot, value);
+}
+
 InputSource? _parseInputSource(YamlMap node) {
+  if (_readBool(node['dart']) == true) {
+    return const DartSdkInputSource();
+  }
+  if (_readBool(node['flutter']) == true) {
+    return const FlutterSdkInputSource();
+  }
   final pathValue = _readString(node['path']);
   if (pathValue != null) {
     return LocalInputSource(pathValue);
@@ -224,6 +309,61 @@ InputSource? _parseInputSource(YamlMap node) {
     }
   }
   return null;
+}
+
+CollectorInput? _parseShorthandInput(String value) {
+  final trimmed = value.trim();
+  if (trimmed.isEmpty) {
+    return null;
+  }
+  final lower = trimmed.toLowerCase();
+  if (lower == 'dart') {
+    return const CollectorInput(
+      outputFile: _defaultDartSdkOutput,
+      source: DartSdkInputSource(),
+      runPubGet: false,
+    );
+  }
+  if (lower == 'flutter') {
+    return const CollectorInput(
+      outputFile: _defaultFlutterOutput,
+      source: FlutterSdkInputSource(),
+      runPubGet: false,
+    );
+  }
+  if (lower.startsWith('dart.')) {
+    final extension = lower.substring('dart'.length);
+    if (_isSupportedOutputExtension(extension)) {
+      return CollectorInput(
+        outputFile: 'dart_sdk_errors$extension',
+        source: const DartSdkInputSource(),
+        runPubGet: false,
+      );
+    }
+  }
+  if (lower.startsWith('flutter.')) {
+    final extension = lower.substring('flutter'.length);
+    if (_isSupportedOutputExtension(extension)) {
+      return CollectorInput(
+        outputFile: 'flutter_errors$extension',
+        source: const FlutterSdkInputSource(),
+        runPubGet: false,
+      );
+    }
+  }
+  return null;
+}
+
+bool _isSupportedOutputExtension(String extension) {
+  switch (extension) {
+    case '.dart':
+    case '.json':
+    case '.yaml':
+    case '.yml':
+      return true;
+    default:
+      return false;
+  }
 }
 
 String? _findPackageRoot(String startPath) {
@@ -253,4 +393,18 @@ String? _readString(Object? value) {
     return value;
   }
   return null;
+}
+
+bool? _readBool(Object? value) {
+  if (value is bool) {
+    return value;
+  }
+  return null;
+}
+
+String _resolvePath(String base, String value) {
+  if (p.isAbsolute(value)) {
+    return value;
+  }
+  return p.normalize(p.join(base, value));
 }

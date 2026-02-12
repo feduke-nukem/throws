@@ -1,0 +1,6 @@
+output_dir: lib/src/gen
+input:
+  - dart_sdk:
+      output: dart_sdk_errors.g.dart
+  - flutter_sdk:
+      output: flutter_errors.g.dart

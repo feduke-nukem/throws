@@ -107,6 +107,17 @@ String libraryIdentifierFor(
     }
   }
 
+  if (resolvedPackageName != null && resolvedPackageRoot != null) {
+    final packageUri = _packageUriForPath(
+      result.path,
+      resolvedPackageRoot,
+      resolvedPackageName,
+    );
+    if (packageUri != null) {
+      return packageUri;
+    }
+  }
+
   final uri = result.libraryElement.uri.toString();
   if (uri.isNotEmpty) {
     if (resolvedPackageName != null && uri.startsWith('file://')) {
@@ -144,7 +155,14 @@ String? packageNameFromPubspec(String rootPath) {
 }
 
 PackageInfo? packageInfoForPath(String filePath) {
-  var current = p.normalize(p.dirname(filePath));
+  final fallback = _packageInfoFromPackagesPath(filePath);
+  if (fallback != null) {
+    return fallback;
+  }
+  final type = FileSystemEntity.typeSync(filePath);
+  var current = p.normalize(
+    type == FileSystemEntityType.directory ? filePath : p.dirname(filePath),
+  );
   while (true) {
     final pubspec = File(p.join(current, 'pubspec.yaml'));
     if (pubspec.existsSync()) {
@@ -167,6 +185,25 @@ PackageInfo? packageInfoForPath(String filePath) {
     }
     current = parent;
   }
+}
+
+PackageInfo? _packageInfoFromPackagesPath(String filePath) {
+  final normalized = p.normalize(filePath);
+  final parts = p.split(normalized);
+  final packagesIndex = parts.lastIndexOf('packages');
+  if (packagesIndex == -1 || packagesIndex + 1 >= parts.length) {
+    return null;
+  }
+  final packageName = parts[packagesIndex + 1];
+  if (packageName.isEmpty) {
+    return null;
+  }
+  final root = p.joinAll(parts.take(packagesIndex + 2));
+  final libRoot = p.join(root, 'lib');
+  if (p.isWithin(libRoot, normalized) || normalized == libRoot) {
+    return PackageInfo(name: packageName, root: root);
+  }
+  return null;
 }
 
 class PackageInfo {
@@ -246,11 +283,26 @@ String? _packageUriForPath(
   String packageRoot,
   String packageName,
 ) {
-  final libRoot = p.normalize(p.join(packageRoot, 'lib'));
   final normalizedPath = p.normalize(filePath);
-  if (!p.isWithin(libRoot, normalizedPath) && normalizedPath != libRoot) {
+  final normalizedRoot = p.normalize(packageRoot);
+  if (!p.isWithin(normalizedRoot, normalizedPath) &&
+      normalizedPath != normalizedRoot) {
     return null;
   }
-  final relPath = p.relative(normalizedPath, from: libRoot);
-  return 'package:$packageName/$relPath';
+
+  final libRoot = p.normalize(p.join(normalizedRoot, 'lib'));
+  if (p.isWithin(libRoot, normalizedPath) || normalizedPath == libRoot) {
+    final relPath = p.relative(normalizedPath, from: libRoot);
+    return 'package:$packageName/$relPath';
+  }
+
+  final parts = p.split(normalizedPath);
+  final libIndex = parts.lastIndexOf('lib');
+  if (libIndex != -1 && libIndex + 1 < parts.length) {
+    final relParts = parts.sublist(libIndex + 1);
+    final relPath = p.joinAll(relParts);
+    return 'package:$packageName/$relPath';
+  }
+
+  return null;
 }

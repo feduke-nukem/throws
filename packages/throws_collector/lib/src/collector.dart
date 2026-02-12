@@ -17,7 +17,9 @@ Future<Map<String, Set<String>>> collectThrows({
   final collection = AnalysisContextCollection(includedPaths: [root.path]);
   final sdkRoot = findSdkRoot(root.path);
   final sdkLibraryMap = loadSdkLibraryMap(sdkRoot);
-  final packageName = packageNameFromPubspec(root.path);
+  final packageInfo = packageInfoForPath(root.path);
+  final packageName = packageInfo?.name ?? packageNameFromPubspec(root.path);
+  final packageRoot = packageInfo?.root;
 
   final entries = <String, Set<String>>{};
 
@@ -40,7 +42,7 @@ Future<Map<String, Set<String>>> collectThrows({
         sdkLibraryMap,
         sdkRoot,
         packageName: packageName,
-        packageRoot: root.path,
+        packageRoot: packageRoot,
       ),
       sdkLibraryMap,
     );
