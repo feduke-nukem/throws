@@ -6,9 +6,5 @@ abstract class DelegatedRepo implements IRepository {
   DelegatedRepo(this._repo);
 
   @override
-  Future<List<String>> getSettings() async {
-    final result = await _repo.getSettings();
-
-    return result;
-  }
+  Future<List<String>> getSettings() => _repo.getSettings();
 }

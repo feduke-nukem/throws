@@ -115,17 +115,22 @@ bool _hasThrowsAnnotationOnElement(ExecutableElement element) {
 }
 
 Set<String> expectedErrorsFromElementOrSdk(Element? element) {
-  final executable = element is ExecutableElement ? element : null;
+  final executable = element is ExecutableElement ? element.baseElement : null;
   if (executable == null) {
     return const {};
   }
 
-  final errors = _expectedErrorsFromAnnotationElement(executable);
+  final throwingExecutable = _findThrowingExecutable(executable);
+  if (throwingExecutable == null) {
+    return const {};
+  }
+
+  final errors = _expectedErrorsFromAnnotationElement(throwingExecutable);
   if (errors.isNotEmpty) {
     return errors.toSet();
   }
 
-  final sdkErrors = sdkThrowsForElement(executable);
+  final sdkErrors = sdkThrowsForElement(throwingExecutable);
   if (sdkErrors == null) {
     return const {};
   }
@@ -228,16 +233,58 @@ List<String> expectedErrorsFromMetadata(List<Annotation> metadata) {
 }
 
 bool isThrowsAnnotatedOrSdk(Element? element) {
-  final executable = element is ExecutableElement ? element : null;
+  final executable = element is ExecutableElement ? element.baseElement : null;
   if (executable == null) {
     return false;
   }
+  return _findThrowingExecutable(executable) != null;
+}
 
-  if (executable.metadata.annotations.any(_isThrowsAnnotation)) {
-    return true;
+ExecutableElement? _findThrowingExecutable(ExecutableElement element) {
+  final visited = <ExecutableElement>{};
+  ExecutableElement? current = element;
+  while (current != null && visited.add(current)) {
+    if (_hasThrowsAnnotationOnElement(current) ||
+        isSdkThrowingElement(current)) {
+      return current;
+    }
+    current = _overriddenExecutable(current);
   }
+  return null;
+}
 
-  return isSdkThrowingElement(executable);
+ExecutableElement? _overriddenExecutable(ExecutableElement element) {
+  if (element is MethodElement) {
+    final enclosing = element.enclosingElement;
+    if (enclosing is InterfaceElement) {
+      final name = element.name ?? element.displayName;
+      final nameObj = Name.forLibrary(element.library, name);
+      final overridden = enclosing.getOverridden(nameObj);
+      if (overridden != null && overridden.isNotEmpty) {
+        return overridden.first;
+      }
+    }
+  }
+  if (element is PropertyAccessorElement) {
+    final enclosing = element.enclosingElement;
+    if (enclosing is InterfaceElement) {
+      final name = element.name ?? element.displayName;
+      final nameObj = Name.forLibrary(element.library, name);
+      final isSetter = name.endsWith('=');
+      final overridden = <ExecutableElement>[];
+      overridden.addAll(enclosing.getOverridden(nameObj) ?? const []);
+      overridden.addAll(
+        enclosing.getOverridden(
+              isSetter ? nameObj.forSetter : nameObj.forGetter,
+            ) ??
+            const [],
+      );
+      if (overridden.isNotEmpty) {
+        return overridden.first;
+      }
+    }
+  }
+  return null;
 }
 
 bool _isThrowsAnnotation(ElementAnnotation annotation) {
@@ -357,6 +404,14 @@ List<String>? annotatedErrorsForEnclosingFunction(AstNode node) {
     return expectedErrorsFromMetadata(method.metadata);
   }
 
+  final constructor = node.thisOrAncestorOfType<ConstructorDeclaration>();
+  if (constructor != null) {
+    if (!hasThrowsAnnotationOnNode(constructor.metadata)) {
+      return null;
+    }
+    return expectedErrorsFromMetadata(constructor.metadata);
+  }
+
   return null;
 }
 
@@ -384,9 +439,20 @@ bool shouldReportUnhandledCall(
   }
 
   final statement = node.enclosingStatement;
-  final expression = statement?.expression;
   final unit = node.thisOrAncestorOfType<CompilationUnit>();
-  if (expression == null || unit == null) {
+  if (unit == null) {
+    return true;
+  }
+
+  var expression = statement?.expression;
+  if (expression == null) {
+    final expressionBody = node.thisOrAncestorOfType<ExpressionFunctionBody>();
+    if (expressionBody != null) {
+      expression = expressionBody.expression;
+    }
+  }
+
+  if (expression == null) {
     return true;
   }
 

@@ -6,83 +6,108 @@ import 'package:yaml/yaml.dart';
 
 enum OutputFormat { dart, json, yaml }
 
-class CollectorOptions {
-  final String root;
-  final String outPath;
-  final String mapName;
-  final String? sdkRoot;
-  final OutputFormat outputFormat;
+const _configFileName = 'throws_collector.yaml';
+const outputDirName = 'throws_collector_gen';
+
+class CollectorConfig {
+  final String packageRoot;
+  final String outputDir;
+  final List<CollectorInput> inputs;
   final bool showHelp;
 
-  const CollectorOptions({
-    required this.root,
-    required this.outPath,
-    required this.mapName,
-    required this.sdkRoot,
-    required this.outputFormat,
+  const CollectorConfig({
+    required this.packageRoot,
+    required this.outputDir,
+    required this.inputs,
     required this.showHelp,
   });
 }
 
-CollectorOptions parseArgs(List<String> args) {
-  final config = _loadConfig();
-  final parser = _buildParser(config);
+class CollectorInput {
+  final String outputFile;
+  final InputSource source;
+
+  const CollectorInput({required this.outputFile, required this.source});
+}
+
+sealed class InputSource {
+  const InputSource();
+}
+
+class LocalInputSource extends InputSource {
+  final String path;
+
+  const LocalInputSource(this.path);
+}
+
+class GitInputSource extends InputSource {
+  final String url;
+
+  const GitInputSource(this.url);
+}
+
+class PackageInputSource extends InputSource {
+  final String name;
+  final String version;
+
+  const PackageInputSource({required this.name, required this.version});
+}
+
+CollectorConfig parseArgs(List<String> args) {
+  final parser = _buildParser();
   final results = parser.parse(args);
-  final packageRoot = _findPackageRoot(Directory.current.path);
-
-  var root = results['root'] as String;
-  var outPath = results['out'] as String;
-  var sdkRoot = results['sdk-root'] as String?;
-
-  if (results.wasParsed('root')) {
-    root = _resolvePathOrSelf(packageRoot, root);
-  }
-  if (results.wasParsed('out')) {
-    outPath = _resolvePathOrSelf(packageRoot, outPath);
-  }
-  if (results.wasParsed('sdk-root') && sdkRoot != null) {
-    sdkRoot = _resolvePathOrSelf(packageRoot, sdkRoot);
-  }
-  final outputFormat = _resolveOutputFormat(
-    outPath,
-    _parseOutputFormat(results['format'] as String),
-    results.wasParsed('format'),
-  );
   final showHelp = results['help'] as bool;
-  final mapName = _deriveMapName(outPath, outputFormat);
 
-  return CollectorOptions(
-    root: root,
-    outPath: outPath,
-    mapName: mapName,
-    sdkRoot: sdkRoot,
-    outputFormat: outputFormat,
+  final packageRoot = _findPackageRoot(Directory.current.path);
+  final resolvedRoot = packageRoot ?? Directory.current.path;
+  final outputDir = p.join(resolvedRoot, outputDirName);
+
+  final inputs = packageRoot == null
+      ? const <CollectorInput>[]
+      : _loadInputs(packageRoot);
+
+  return CollectorConfig(
+    packageRoot: resolvedRoot,
+    outputDir: outputDir,
+    inputs: inputs,
     showHelp: showHelp,
   );
 }
 
-OutputFormat _parseOutputFormat(String value) => switch (value.toLowerCase()) {
-  'dart' => OutputFormat.dart,
-  'json' => OutputFormat.json,
-  'yaml' => OutputFormat.yaml,
-  _ => OutputFormat.dart,
-};
+String usage() {
+  final parser = _buildParser();
+  return [
+    'throws_collector: collect throws metadata into map files.',
+    '',
+    'Usage:',
+    '  throws_collector [--help]',
+    '',
+    'Options:',
+    parser.usage,
+    '',
+    'Config:',
+    '  Place throws_collector.yaml at the package root.',
+    '  Output is written to $outputDirName/.',
+  ].join(Platform.lineTerminator);
+}
 
-OutputFormat _resolveOutputFormat(
-  String outPath,
-  OutputFormat configured,
-  bool formatProvided,
-) {
+ArgParser _buildParser() {
+  return ArgParser()..addFlag(
+    'help',
+    abbr: 'h',
+    help: 'Show this help message.',
+    negatable: false,
+  );
+}
+
+OutputFormat resolveOutputFormat(String outPath) {
   final extension = p.extension(outPath).toLowerCase();
   if (extension.isEmpty) {
-    return configured;
+    return OutputFormat.yaml;
   }
   final inferred = _parseOutputFormatFromExtension(extension);
   if (inferred == null) {
     throw FormatException('Unsupported output file extension: $extension');
-  }
-  if (formatProvided) {
-    return configured;
   }
   return inferred;
 }
@@ -101,107 +126,7 @@ OutputFormat? _parseOutputFormatFromExtension(String extension) {
   }
 }
 
-String usage() {
-  final parser = _buildParser(const _ConfigValues());
-  return [
-    'throws_collector: collect throws metadata into a Dart map.',
-    '',
-    'Usage:',
-    '  throws_collector [options]',
-    '',
-    'Options:',
-    parser.usage,
-    '',
-    'Config:',
-    '  Defaults can be provided by throws_collector.yaml.',
-  ].join(Platform.lineTerminator);
-}
-
-ArgParser _buildParser(_ConfigValues config) {
-  return ArgParser()
-    ..addOption(
-      'root',
-      help: 'Root directory to analyze.',
-      valueHelp: 'path',
-      defaultsTo: config.root ?? '.',
-    )
-    ..addOption(
-      'out',
-      help: 'Output file path.',
-      valueHelp: 'file',
-      defaultsTo: config.outPath ?? 'throws/throws_collector_result.g.dart',
-    )
-    ..addOption(
-      'sdk-root',
-      help: 'Optional Dart SDK root for dart: URI mapping.',
-      valueHelp: 'path',
-      defaultsTo: config.sdkRoot,
-    )
-    ..addOption(
-      'format',
-      help: 'Output format: dart, json, yaml.',
-      valueHelp: 'value',
-      allowed: const ['dart', 'json', 'yaml'],
-      defaultsTo: (config.outputFormat ?? OutputFormat.dart).name,
-    )
-    ..addFlag(
-      'help',
-      abbr: 'h',
-      help: 'Show this help message.',
-      negatable: false,
-    );
-}
-
-class _ConfigValues {
-  final String? root;
-  final String? outPath;
-  final String? sdkRoot;
-  final OutputFormat? outputFormat;
-
-  const _ConfigValues({
-    this.root,
-    this.outPath,
-    this.sdkRoot,
-    this.outputFormat,
-  });
-}
-
-_ConfigValues _loadConfig() {
-  try {
-    final packageRoot = _findPackageRoot(Directory.current.path);
-    if (packageRoot == null) {
-      return const _ConfigValues();
-    }
-    final configFile = File(p.join(packageRoot, 'throws_collector.yaml'));
-    if (!configFile.existsSync()) {
-      return const _ConfigValues();
-    }
-
-    final yamlDoc = loadYaml(configFile.readAsStringSync());
-    if (yamlDoc is! YamlMap) {
-      return const _ConfigValues();
-    }
-
-    final root = _readString(yamlDoc['root']);
-    final outPath = _readString(yamlDoc['out']);
-    final sdkRoot = _readString(yamlDoc['sdk_root']);
-    final formatValue = _readString(yamlDoc['format']);
-    final outputFormat = formatValue == null
-        ? null
-        : _parseOutputFormat(formatValue);
-
-    return _ConfigValues(
-      root: _resolvePath(packageRoot, root),
-      outPath: _resolvePath(packageRoot, outPath),
-      sdkRoot: _resolvePath(packageRoot, sdkRoot),
-      outputFormat: outputFormat,
-    );
-  } catch (_) {
-    return const _ConfigValues();
-  }
-}
-
-String _deriveMapName(String outPath, OutputFormat format) {
+String deriveMapName(String outPath, OutputFormat format) {
   var baseName = p.basename(outPath);
   if (baseName.endsWith('.g.dart')) {
     baseName = baseName.substring(0, baseName.length - '.g.dart'.length);
@@ -242,11 +167,63 @@ String _toLowerCamelCase(String value) {
   return buffer.toString();
 }
 
-String _resolvePathOrSelf(String? base, String value) {
-  if (base == null || value.isEmpty || p.isAbsolute(value)) {
-    return value;
+List<CollectorInput> _loadInputs(String packageRoot) {
+  final configFile = File(p.join(packageRoot, _configFileName));
+  if (!configFile.existsSync()) {
+    return const <CollectorInput>[];
   }
-  return p.normalize(p.join(base, value));
+
+  final yamlDoc = loadYaml(configFile.readAsStringSync());
+  if (yamlDoc is! YamlMap) {
+    return const <CollectorInput>[];
+  }
+
+  final inputNode = yamlDoc['input'];
+  if (inputNode is! YamlList) {
+    return const <CollectorInput>[];
+  }
+
+  final inputs = <CollectorInput>[];
+  for (final item in inputNode) {
+    if (item is! YamlMap || item.length != 1) {
+      continue;
+    }
+    final entry = item.entries.first;
+    final outputFile = entry.key is String ? entry.key as String : null;
+    if (outputFile == null || outputFile.isEmpty) {
+      continue;
+    }
+    if (entry.value is! YamlMap) {
+      continue;
+    }
+    final source = _parseInputSource(entry.value as YamlMap);
+    if (source == null) {
+      continue;
+    }
+    inputs.add(CollectorInput(outputFile: outputFile, source: source));
+  }
+
+  return inputs;
+}
+
+InputSource? _parseInputSource(YamlMap node) {
+  final pathValue = _readString(node['path']);
+  if (pathValue != null) {
+    return LocalInputSource(pathValue);
+  }
+  final gitValue = _readString(node['git']);
+  if (gitValue != null) {
+    return GitInputSource(gitValue);
+  }
+  final packageNode = node['package'];
+  if (packageNode is YamlMap) {
+    final name = _readString(packageNode['name']);
+    final version = _readString(packageNode['version']);
+    if (name != null && version != null) {
+      return PackageInputSource(name: name, version: version);
+    }
+  }
+  return null;
 }
 
 String? _findPackageRoot(String startPath) {
@@ -276,14 +253,4 @@ String? _readString(Object? value) {
     return value;
   }
   return null;
-}
-
-String? _resolvePath(String base, String? value) {
-  if (value == null || value.isEmpty) {
-    return null;
-  }
-  if (p.isAbsolute(value)) {
-    return value;
-  }
-  return p.normalize(p.join(base, value));
 }

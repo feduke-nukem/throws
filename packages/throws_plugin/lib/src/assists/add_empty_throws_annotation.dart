@@ -39,12 +39,10 @@ class AddEmptyThrowsAnnotationAssist extends ResolvedCorrectionProducer {
     final offset = functionNode.insertOffset(metadata);
     await builder.addDartFileEdit(file, (builder) {
       final throwsRef = builder.importThrows(isCapitalized: false);
-      builder.addInsertion(offset, (builder) {
-        builder.write(
-          '@$throwsRef',
-        );
-
-        builder.writeln();
+      final indent = utils.getLinePrefix(offset);
+      final insertOffset = offset - indent.length;
+      builder.addInsertion(insertOffset, (builder) {
+        builder.writeln('$indent@$throwsRef');
       });
     });
   }

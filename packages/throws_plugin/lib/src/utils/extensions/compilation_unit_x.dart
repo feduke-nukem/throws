@@ -40,8 +40,27 @@ extension CompilationUnitX on CompilationUnit {
           }
         }
       } else if (declaration is ClassDeclaration) {
-        for (final member in declaration.members) {
+        final body = declaration.body;
+        if (body is! BlockClassBody) {
+          continue;
+        }
+        for (final member in body.members) {
           if (member is MethodDeclaration) {
+            final visitor = ThrowsBodyVisitor();
+            member.body.accept(visitor);
+            if (visitor.hasUnhandledThrow || visitor.hasUnhandledThrowingCall) {
+              final element = member.declaredFragment?.element;
+              if (element != null) {
+                final base = element.baseElement;
+                elements.add(base);
+                final expected = collectExpectedErrors(
+                  member.body,
+                  localExpectedErrorsByElement: const {},
+                );
+                expectedErrorsByElement[base] = expected;
+              }
+            }
+          } else if (member is ConstructorDeclaration) {
             final visitor = ThrowsBodyVisitor();
             member.body.accept(visitor);
             if (visitor.hasUnhandledThrow || visitor.hasUnhandledThrowingCall) {

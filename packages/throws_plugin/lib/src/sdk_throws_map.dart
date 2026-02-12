@@ -15,7 +15,7 @@ const _configCustomErrorsKey = 'custom_errors';
 final Map<String, _ThrowsConfig> _userThrowsCache = {};
 
 List<String>? sdkThrowsForElement(Element? element) {
-  final executable = element is ExecutableElement ? element : null;
+  final executable = element is ExecutableElement ? element.baseElement : null;
   if (executable == null) {
     return null;
   }
@@ -120,8 +120,10 @@ _ThrowsConfig _parseThrowsYaml(String content, String rootPath) {
   final result = <String, List<String>>{};
   for (final include in includeFiles) {
     final includePath = _resolveIncludePath(rootPath, include);
-    final includeMap = _readThrowsFile(includePath);
-    _mergeThrowsMap(result, includeMap);
+    for (final path in _expandIncludePaths(includePath)) {
+      final includeMap = _readThrowsFile(path);
+      _mergeThrowsMap(result, includeMap);
+    }
   }
 
   final mapNode =
@@ -169,6 +171,27 @@ String _resolveIncludePath(String rootPath, String includePath) {
     return includePath;
   }
   return '$rootPath/$includePath';
+}
+
+List<String> _expandIncludePaths(String path) {
+  final directory = Directory(path);
+  if (!directory.existsSync()) {
+    return [path];
+  }
+
+  final entries = directory.listSync();
+  final yamlFiles = <String>[];
+  for (final entry in entries) {
+    if (entry is! File) {
+      continue;
+    }
+    final filePath = entry.path;
+    if (filePath.endsWith('.yaml') || filePath.endsWith('.yml')) {
+      yamlFiles.add(filePath);
+    }
+  }
+  yamlFiles.sort();
+  return yamlFiles;
 }
 
 Map<String, List<String>> _readThrowsFile(String path) {

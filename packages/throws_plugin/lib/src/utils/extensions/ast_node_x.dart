@@ -8,7 +8,9 @@ extension AstNodeX on AstNode {
   AstNode? get enclosingFunction {
     AstNode? current = this;
     while (current != null) {
-      if (current is FunctionDeclaration || current is MethodDeclaration) {
+      if (current is FunctionDeclaration ||
+          current is MethodDeclaration ||
+          current is ConstructorDeclaration) {
         return current;
       }
       current = current.parent;
@@ -31,7 +33,9 @@ extension AstNodeX on AstNode {
         return current;
       }
 
-      if (current is FunctionDeclaration || current is MethodDeclaration) {
+      if (current is FunctionDeclaration ||
+          current is MethodDeclaration ||
+          current is ConstructorDeclaration) {
         return null;
       }
       current = current.parent;
@@ -66,18 +70,21 @@ extension AstNodeX on AstNode {
   List<Annotation> get metadata => switch (this) {
     FunctionDeclaration(:final metadata) => metadata,
     MethodDeclaration(:final metadata) => metadata,
+    ConstructorDeclaration(:final metadata) => metadata,
     _ => const [],
   };
 
   FunctionBody? get functionBody => switch (this) {
     FunctionDeclaration(:final functionExpression) => functionExpression.body,
     MethodDeclaration(:final body) => body,
+    ConstructorDeclaration(:final body) => body,
     _ => null,
   };
 
   int insertOffset(List<Annotation> metadata) => switch (this) {
     FunctionDeclaration() when metadata.isNotEmpty => metadata.first.offset,
     MethodDeclaration() when metadata.isNotEmpty => metadata.first.offset,
+    ConstructorDeclaration() when metadata.isNotEmpty => metadata.first.offset,
     FunctionDeclaration(:final documentationComment)
         when documentationComment != null =>
       documentationComment.endToken.next?.offset ??
@@ -86,8 +93,13 @@ extension AstNodeX on AstNode {
         when documentationComment != null =>
       documentationComment.endToken.next?.offset ??
           documentationComment.end + 1,
+    ConstructorDeclaration(:final documentationComment)
+        when documentationComment != null =>
+      documentationComment.endToken.next?.offset ??
+          documentationComment.end + 1,
     FunctionDeclaration(:var beginToken) => beginToken.offset,
     MethodDeclaration(:var beginToken) => beginToken.offset,
+    ConstructorDeclaration(:var beginToken) => beginToken.offset,
     _ when metadata.isNotEmpty => metadata.first.offset,
     _ => offset,
   };

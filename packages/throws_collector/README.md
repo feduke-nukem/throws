@@ -1,6 +1,9 @@
 # throws_collector
 
-CLI tool to collect thrown errors from Dart sources and emit a Dart map.
+CLI tool to collect thrown errors from Dart sources and emit map files.
+
+This tool is optional. It is a heuristic helper for throws_plugin and is most
+useful when you want more complete SDK/dependency coverage in throws.yaml.
 
 ## Install
 
@@ -14,50 +17,51 @@ dev_dependencies:
 ## Usage
 
 ```bash
-dart run throws_collector --root <path> --out <file>
-```
-
-Examples:
-
-```bash
-dart run throws_collector --root /path/to/sdk --out tool/throws_map_generated.dart
-```
-
-Or use a config file with no args:
-
-```bash
 dart run throws_collector
 ```
 
 ## throws_collector.yaml
 
-The tool reads `throws_collector.yaml` at the package root that lists
-`throws_collector` under `dev_dependencies`. CLI args override config values.
+The tool reads throws_collector.yaml at the package root that lists
+throws_collector under dev_dependencies.
 
 Example:
 
 ```yaml
-root: .
-out: tool/throws_map_generated.dart
-sdk_root: /path/to/sdk
-format: dart
+input:
+  - dart_errors.yaml:
+      path: /path/to/sdk/lib
+  - dart_errors_git.yaml:
+      git: https://github.com/dart-lang/sdk/tree/main/sdk/lib
+  - bloc_errors.dart:
+      package:
+        name: bloc
+        version: 9.2.0
 ```
 
-## Options
-
-- `--root <path>`: root directory to analyze.
-- `--out <file>`: output file path.
-- Dart output map name is inferred from the output file name and camel-cased (e.g. `flutter_errors.g.dart` -> `flutterErrors`).
-- `--sdk-root <path>`: optional Dart SDK root to map `dart:` URIs.
-- `--format <value>`: output format (`dart`, `json`, `yaml`). If omitted, the tool infers it from the file extension (`.dart`, `.json`, `.yaml`, `.yml`).
-- `-h`, `--help`: show help.
+Input types:
+- path: local directory
+- git: git URL (shallow clone)
+- package: pub.dev package name and version
 
 ## Output
 
+Output is written to the throws_collector_gen/ directory in the package root.
+The output file name is taken from the input keys. Output format is inferred
+from the extension (.dart, .json, .yaml, .yml).
+
+Package inputs are downloaded from pub.dev and cached under
+.dart_tool/throws_collector/pub/ if they are not already in the global pub
+cache.
+
+For Dart output, the map name is inferred from the file name and camel-cased
+(for example, flutter_errors.g.dart -> flutterErrors).
+
 The tool writes a Dart/JSON/YAML file containing a map of thrown errors.
-Keys are `<library-uri>.<enclosing>.<member>` or `<library-uri>.<member>`.
+Keys are <library-uri>.<enclosing>.<member> or <library-uri>.<member>.
 
 ## Notes
 
 - Uses resolved AST; results are best-effort and not guaranteed to be complete.
 - Generated entries may include inferred types from static analysis.
+- Collector output can be included in throws.yaml via include_paths.

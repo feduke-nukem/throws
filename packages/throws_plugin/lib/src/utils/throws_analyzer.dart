@@ -92,6 +92,30 @@ class _FunctionCollector extends RecursiveAstVisitor<void> {
     }
     super.visitMethodDeclaration(node);
   }
+
+  @override
+  void visitConstructorDeclaration(ConstructorDeclaration node) {
+    final expectedErrors = expectedErrorsFromMetadata(node.metadata).toSet();
+    final summary = FunctionSummary(
+      nameToken: node.name ?? node.returnType.beginToken,
+      body: node.body,
+      hasThrowsAnnotation: hasThrowsAnnotationOnNode(node.metadata),
+      annotatedExpectedErrors: expectedErrors,
+      allowAnyExpectedErrors:
+          hasThrowsAnnotationOnNode(node.metadata) && expectedErrors.isEmpty,
+      isAbstractOrExternal: isAbstractOrExternalBody(
+        node.body,
+        node.externalKeyword,
+      ),
+    );
+    summary.element = node.declaredFragment?.element.baseElement;
+    summaries.add(summary);
+    final element = node.declaredFragment?.element;
+    if (element != null) {
+      summaryByElement[element.baseElement] = summary;
+    }
+    super.visitConstructorDeclaration(node);
+  }
 }
 
 class _FunctionBodyVisitor extends RecursiveAstVisitor<void> {
