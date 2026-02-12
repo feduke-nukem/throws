@@ -4,7 +4,10 @@
 # Example: dart:core.Iterable.single
 
 throws:
-  use_sdk_map: false
-  map:
+  include_prebuilt:
+    - dart
+  include_paths:
+    - gen/flutter_errors.yaml
+  custom_errors:
     dart:core.Iterable.single:
       - StateError

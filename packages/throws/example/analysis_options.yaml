@@ -2,11 +2,5 @@ include: package:lints/recommended.yaml
 plugins:
   throws_plugin:
     path: ../../throws_plugin
-    diagnostics:
-      missing_throws_annotation: error
-      throws_annotation_mismatch: error
-      unused_throws_annotation: error
-      introduced_throws_in_override: error
-      missing_error_handling: error
 formatter:
   trailing_commas: preserve

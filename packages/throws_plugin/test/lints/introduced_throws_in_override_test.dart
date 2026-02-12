@@ -3,25 +3,25 @@
 import 'package:analyzer/src/lint/registry.dart'; // ignore: implementation_imports
 import 'package:analyzer_testing/analysis_rule/analysis_rule.dart';
 import 'package:test_reflective_loader/test_reflective_loader.dart';
-import 'package:throws_plugin/src/lints/introduced_throws_in_override_rule.dart';
+import 'package:throws_plugin/src/lints/introduced_throws_in_override.dart';
 
 import '../stubs.dart';
 
 void main() {
   defineReflectiveSuite(() {
-    defineReflectiveTests(IntroducedThrowsInOverrideRuleTest);
+    defineReflectiveTests(IntroducedThrowsInOverrideTest);
   });
 }
 
 @reflectiveTest
-class IntroducedThrowsInOverrideRuleTest extends AnalysisRuleTest {
+class IntroducedThrowsInOverrideTest extends AnalysisRuleTest {
   @override
   String get analysisRule => 'introduced_throws_in_override';
 
   @override
   void setUp() {
     Registry.ruleRegistry.registerLintRule(
-      IntroducedThrowsInOverrideRule(),
+      IntroducedThrowsInOverride(),
     );
     addThrowsPackage(this);
     super.setUp();
@@ -30,7 +30,7 @@ class IntroducedThrowsInOverrideRuleTest extends AnalysisRuleTest {
   @override
   Future<void> tearDown() async {
     Registry.ruleRegistry.unregisterLintRule(
-      IntroducedThrowsInOverrideRule(),
+      IntroducedThrowsInOverride(),
     );
     await super.tearDown();
   }

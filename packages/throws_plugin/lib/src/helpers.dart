@@ -7,7 +7,9 @@ import 'package:throws_plugin/src/data/inherited_throws_info.dart';
 import 'package:throws_plugin/src/data/throws_annotation.dart';
 import 'package:throws_plugin/src/sdk_throws_map.dart';
 import 'package:throws_plugin/src/utils/extensions/annotation_x.dart';
+import 'package:throws_plugin/src/utils/extensions/ast_node_x.dart';
 import 'package:throws_plugin/src/utils/extensions/expression_x.dart';
+import 'package:throws_plugin/src/utils/extensions/statement_x.dart';
 import 'package:throws_plugin/src/utils/throws_body_visitor.dart';
 import 'package:throws_plugin/src/utils/throws_expected_errors_collector.dart';
 
@@ -142,7 +144,7 @@ List<String> _expectedErrorsFromAnnotationElement(ExecutableElement element) {
       final names = <String>[];
       for (final entry in values) {
         final typeValue = entry.toTypeValue();
-        final typeName = typeValue?.getDisplayString(withNullability: false);
+        final typeName = typeValue?.getDisplayString();
         if (typeName != null) {
           names.add(typeName);
         }
@@ -179,7 +181,7 @@ String? _typeNameFromExpression(Expression expression) {
     }
   }
   final staticType = expression.staticType;
-  final staticName = staticType?.getDisplayString(withNullability: false);
+  final staticName = staticType?.getDisplayString();
   if (staticName != null && staticName != 'dynamic') {
     return staticName;
   }
@@ -339,10 +341,66 @@ List<String>? annotatedErrorsForEnclosingFunction(AstNode node) {
   final method = node.thisOrAncestorOfType<MethodDeclaration>();
   if (method != null) {
     if (!hasThrowsAnnotationOnNode(method.metadata)) {
-      return null;
+      final element = method.declaredFragment?.element;
+      if (element == null) {
+        return null;
+      }
+      final info = collectInheritedThrowsInfo(element);
+      if (!info.hasAnnotatedSuper) {
+        return null;
+      }
+      if (info.allowAny) {
+        return const [];
+      }
+      return info.expectedErrors.toList();
     }
     return expectedErrorsFromMetadata(method.metadata);
   }
 
   return null;
+}
+
+bool shouldReportUnhandledCall(
+  AstNode node, {
+  required bool requireTryCatch,
+}) {
+  if (requireTryCatch) {
+    if (!node.isWithinTryWithCatch) {
+      return false;
+    }
+  } else {
+    if (node.isWithinTryWithCatch) {
+      return false;
+    }
+  }
+
+  final annotatedErrors = annotatedErrorsForEnclosingFunction(node);
+  if (annotatedErrors != null && annotatedErrors.isEmpty) {
+    return false;
+  }
+
+  if (annotatedErrors == null) {
+    return true;
+  }
+
+  final statement = node.enclosingStatement;
+  final expression = statement?.expression;
+  final unit = node.thisOrAncestorOfType<CompilationUnit>();
+  if (expression == null || unit == null) {
+    return true;
+  }
+
+  final expectedErrors = expression.expectedErrors(unit) ?? const [];
+  if (expectedErrors.isEmpty) {
+    return false;
+  }
+
+  final filteredExpectedErrors = expectedErrors
+      .where((error) => !annotatedErrors.contains(error))
+      .toSet();
+  if (filteredExpectedErrors.isEmpty) {
+    return false;
+  }
+
+  return node.unhandledExpectedErrors(filteredExpectedErrors).isNotEmpty;
 }

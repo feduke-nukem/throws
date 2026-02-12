@@ -76,6 +76,16 @@ extension AstNodeX on AstNode {
   };
 
   int insertOffset(List<Annotation> metadata) => switch (this) {
+    FunctionDeclaration() when metadata.isNotEmpty => metadata.first.offset,
+    MethodDeclaration() when metadata.isNotEmpty => metadata.first.offset,
+    FunctionDeclaration(:final documentationComment)
+        when documentationComment != null =>
+      documentationComment.endToken.next?.offset ??
+          documentationComment.end + 1,
+    MethodDeclaration(:final documentationComment)
+        when documentationComment != null =>
+      documentationComment.endToken.next?.offset ??
+          documentationComment.end + 1,
     FunctionDeclaration(:var beginToken) => beginToken.offset,
     MethodDeclaration(:var beginToken) => beginToken.offset,
     _ when metadata.isNotEmpty => metadata.first.offset,

@@ -5,23 +5,26 @@ import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
 import 'package:analyzer/error/error.dart';
 import 'package:throws_plugin/src/data/throws_annotation.dart';
-import 'package:throws_plugin/src/utils/extensions/function_summary_x.dart';
+import 'package:throws_plugin/src/helpers.dart';
 import 'package:throws_plugin/src/utils/throws_analyzer.dart';
 
-class IntroducedThrowsInOverrideRule extends AnalysisRule {
+class ThrowsAnnotationMismatch extends AnalysisRule {
   static const LintCode _code = LintCode(
-    'introduced_throws_in_override',
-    'Overrides should not introduce new thrown errors.',
+    'throws_annotation_mismatch',
+    'The @${ThrowsAnnotation.nameCapitalized} annotation does not match the thrown errors.',
     correctionMessage:
-        'Match the @${ThrowsAnnotation.nameCapitalized} annotation of the overridden member or handle errors.',
+        'Update @${ThrowsAnnotation.nameCapitalized} to match the errors thrown in this function.',
+    severity: DiagnosticSeverity.ERROR,
   );
 
-  IntroducedThrowsInOverrideRule()
+  ThrowsAnnotationMismatch()
     : super(
-        name: 'introduced_throws_in_override',
+        name: 'throws_annotation_mismatch',
         description:
-            'Disallows new errors in overrides without @${ThrowsAnnotation.nameCapitalized}.',
+            'Ensures @${ThrowsAnnotation.nameCapitalized} matches the errors thrown.',
       );
+
+  static const LintCode code = _code;
 
   @override
   LintCode get diagnosticCode => _code;
@@ -45,16 +48,12 @@ class _Visitor extends SimpleAstVisitor<void> {
     final summaries = ThrowsAnalyzer().analyze(node);
 
     for (final summary in summaries) {
-      final shouldReportIntroducedThrows =
-          !summary.hasThrowsAnnotation &&
-          (summary.hasUnhandledThrow || summary.hasUnhandledThrowingCall) &&
-          summary.introducesNewErrors;
-
-      if (!shouldReportIntroducedThrows) {
-        continue;
+      if (summary.hasThrowsAnnotation &&
+          !summary.allowAnyExpectedErrors &&
+          summary.thrownErrors.isNotEmpty &&
+          !matchesAnnotation(summary)) {
+        rule.reportAtToken(summary.nameToken);
       }
-
-      rule.reportAtToken(summary.nameToken);
     }
   }
 }

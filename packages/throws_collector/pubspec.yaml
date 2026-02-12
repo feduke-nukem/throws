@@ -1,0 +1,21 @@
+name: throws_collector
+description: CLI tool to collect thrown exceptions and errors from Dart sources.
+version: 1.0.0
+repository: https://github.com/Yobari-Timeliners/throws/tree/main/packages/throws_collector
+homepage: https://github.com/Yobari-Timeliners/throws/tree/main/packages/throws_collector
+
+environment:
+  sdk: ^3.10.0
+
+executables:
+  throws_collector: main
+
+dependencies:
+  args: ^2.6.0
+  analyzer: ^10.0.0
+  path: ^1.9.0
+  yaml: ^3.1.2
+
+dev_dependencies:
+  lints: ^6.0.0
+  test: ^1.25.6

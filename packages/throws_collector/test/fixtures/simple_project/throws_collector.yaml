@@ -1,0 +1,4 @@
+root: lib
+out: build/throws_map.yaml
+map_name: dartSdkErrors
+format: yaml

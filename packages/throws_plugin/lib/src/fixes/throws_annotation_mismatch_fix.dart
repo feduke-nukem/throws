@@ -1,7 +1,8 @@
 import 'package:analysis_server_plugin/edit/dart/correction_producer.dart';
+import 'package:analysis_server_plugin/edit/dart/dart_fix_kind_priority.dart';
 import 'package:analyzer/dart/ast/ast.dart';
-import 'package:analyzer_plugin/utilities/assist/assist.dart';
 import 'package:analyzer_plugin/utilities/change_builder/change_builder_core.dart';
+import 'package:analyzer_plugin/utilities/fixes/fixes.dart';
 import 'package:analyzer_plugin/utilities/range_factory.dart';
 import 'package:throws_plugin/src/data/throws_annotation.dart';
 import 'package:throws_plugin/src/helpers.dart';
@@ -9,21 +10,21 @@ import 'package:throws_plugin/src/utils/extensions/annotation_x.dart';
 import 'package:throws_plugin/src/utils/extensions/ast_node_x.dart';
 import 'package:throws_plugin/src/utils/extensions/compilation_unit_x.dart';
 
-class UpdateThrowsAnnotationAssist extends ResolvedCorrectionProducer {
-  static const AssistKind _assistKind = AssistKind(
-    'throws.assist.updateThrowsAnnotation',
-    30,
+class ThrowsAnnotationMismatchFix extends ResolvedCorrectionProducer {
+  static const FixKind _fixKind = FixKind(
+    'throws.fix.throwsAnnotationMismatch',
+    DartFixKindPriority.standard,
     'Update @${ThrowsAnnotation.nameCapitalized} annotation',
   );
 
-  UpdateThrowsAnnotationAssist({required super.context});
+  ThrowsAnnotationMismatchFix({required super.context});
 
   @override
   CorrectionApplicability get applicability =>
       CorrectionApplicability.singleLocation;
 
   @override
-  AssistKind get assistKind => _assistKind;
+  FixKind get fixKind => _fixKind;
 
   @override
   Future<void> compute(ChangeBuilder builder) async {

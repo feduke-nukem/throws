@@ -3,31 +3,31 @@
 import 'package:analyzer/src/lint/registry.dart'; // ignore: implementation_imports
 import 'package:analyzer_testing/analysis_rule/analysis_rule.dart';
 import 'package:test_reflective_loader/test_reflective_loader.dart';
-import 'package:throws_plugin/src/lints/throws_annotation_mismatch_rule.dart';
+import 'package:throws_plugin/src/lints/throws_annotation_mismatch.dart';
 
 import '../stubs.dart';
 
 void main() {
   defineReflectiveSuite(() {
-    defineReflectiveTests(ThrowsAnnotationMismatchRuleTest);
+    defineReflectiveTests(ThrowsAnnotationMismatchTest);
   });
 }
 
 @reflectiveTest
-class ThrowsAnnotationMismatchRuleTest extends AnalysisRuleTest {
+class ThrowsAnnotationMismatchTest extends AnalysisRuleTest {
   @override
   String get analysisRule => 'throws_annotation_mismatch';
 
   @override
   void setUp() {
-    Registry.ruleRegistry.registerLintRule(ThrowsAnnotationMismatchRule());
+    Registry.ruleRegistry.registerLintRule(ThrowsAnnotationMismatch());
     addThrowsPackage(this);
     super.setUp();
   }
 
   @override
   Future<void> tearDown() async {
-    Registry.ruleRegistry.unregisterLintRule(ThrowsAnnotationMismatchRule());
+    Registry.ruleRegistry.unregisterLintRule(ThrowsAnnotationMismatch());
     await super.tearDown();
   }
 

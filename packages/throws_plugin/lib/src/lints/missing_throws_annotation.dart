@@ -8,20 +8,23 @@ import 'package:throws_plugin/src/data/throws_annotation.dart';
 import 'package:throws_plugin/src/utils/extensions/function_summary_x.dart';
 import 'package:throws_plugin/src/utils/throws_analyzer.dart';
 
-class MissingThrowsAnnotationRule extends AnalysisRule {
+class MissingThrowsAnnotation extends AnalysisRule {
   static const LintCode _code = LintCode(
     'missing_throws_annotation',
     'Functions that throw must be annotated with @${ThrowsAnnotation.nameCapitalized}.',
     correctionMessage:
-        'Add @${ThrowsAnnotation.nameCapitalized}(reason, expectedErrors) or @throws to this function.',
+        'Add @${ThrowsAnnotation.nameCapitalized}() or @throws to this function.',
+    severity: DiagnosticSeverity.ERROR,
   );
 
-  MissingThrowsAnnotationRule()
+  MissingThrowsAnnotation()
     : super(
         name: 'missing_throws_annotation',
         description:
             'Requires @${ThrowsAnnotation.nameCapitalized} on functions that throw.',
       );
+
+  static const LintCode code = _code;
 
   @override
   LintCode get diagnosticCode => _code;

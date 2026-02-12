@@ -1,45 +1,16 @@
 import 'dart:io';
 
 import 'package:analyzer/dart/element/element.dart';
+import 'package:throws_plugin/src/gen/dart_sdk_errors.g.dart';
+import 'package:throws_plugin/src/gen/flutter_errors.g.dart';
 import 'package:yaml/yaml.dart';
 
-const _dartCoreUri = 'dart:core';
-const _iterable = 'Iterable';
-const _list = 'List';
-const _string = 'String';
-const _int = 'int';
-const _double = 'double';
-const _num = 'num';
-const _dateTime = 'DateTime';
-const _uri = 'Uri';
-
 const _configFileName = 'throws.yaml';
-const _configUseSdkMapKey = 'use_sdk_map';
-
-const _stateError = 'StateError';
-const _rangeError = 'RangeError';
-const _formatException = 'FormatException';
-
-const Map<String, List<String>> _sdkThrowsMap = {
-  '$_dartCoreUri.$_iterable.single': [_stateError],
-  '$_dartCoreUri.$_iterable.first': [_stateError],
-  '$_dartCoreUri.$_iterable.last': [_stateError],
-  '$_dartCoreUri.$_iterable.elementAt': [_rangeError],
-  '$_dartCoreUri.$_iterable.reduce': [_stateError],
-  '$_dartCoreUri.$_list.single': [_stateError],
-  '$_dartCoreUri.$_list.first': [_stateError],
-  '$_dartCoreUri.$_list.last': [_stateError],
-  '$_dartCoreUri.$_list.elementAt': [_rangeError],
-  '$_dartCoreUri.$_list.[]': [_rangeError],
-  '$_dartCoreUri.$_string.substring': [_rangeError],
-  '$_dartCoreUri.$_string.codeUnitAt': [_rangeError],
-  '$_dartCoreUri.$_string.[]': [_rangeError],
-  '$_dartCoreUri.$_int.parse': [_formatException],
-  '$_dartCoreUri.$_double.parse': [_formatException],
-  '$_dartCoreUri.$_num.parse': [_formatException],
-  '$_dartCoreUri.$_dateTime.parse': [_formatException],
-  '$_dartCoreUri.$_uri.parse': [_formatException],
-};
+const _configUseSdkMapKey = 'include_sdk_errors';
+const _configIncludePrebuildKey = 'include_prebuilt';
+const _configIncludePathsKey = 'include_paths';
+const _configIncludeFilesKey = 'include';
+const _configCustomErrorsKey = 'custom_errors';
 
 final Map<String, _ThrowsConfig> _userThrowsCache = {};
 
@@ -55,7 +26,10 @@ List<String>? sdkThrowsForElement(Element? element) {
   }
 
   final memberName = executable.name;
-  final enclosing = executable.enclosingElement?.name;
+  final enclosingName = executable.enclosingElement?.name;
+  final enclosing = (enclosingName == null || enclosingName.isEmpty)
+      ? null
+      : enclosingName;
   if (memberName == null || memberName.isEmpty) {
     return null;
   }
@@ -65,12 +39,13 @@ List<String>? sdkThrowsForElement(Element? element) {
       : '$libraryUri.$enclosing.$memberName';
   final config = _loadUserThrowsConfig(executable);
   if (config == null) {
-    return _sdkThrowsMap[key];
+    return dartSdkErrors[key];
   }
-  if (config.useSdkMap) {
-    return config.map[key] ?? _sdkThrowsMap[key];
+  final custom = config.map[key];
+  if (custom != null) {
+    return custom;
   }
-  return config.map[key];
+  return _prebuiltThrowsForKey(key, config.includePrebuild);
 }
 
 bool isSdkThrowingElement(Element? element) {
@@ -81,7 +56,7 @@ String? _normalizeLibraryUri(String? identifier) {
   if (identifier == null) {
     return null;
   }
-  return identifier == 'dart.core' ? _dartCoreUri : identifier;
+  return identifier == 'dart.core' ? 'dart:core' : identifier;
 }
 
 _ThrowsConfig? _loadUserThrowsConfig(ExecutableElement executable) {
@@ -105,7 +80,7 @@ _ThrowsConfig? _loadUserThrowsConfig(ExecutableElement executable) {
 
   try {
     final content = file.readAsStringSync();
-    final config = _parseThrowsYaml(content);
+    final config = _parseThrowsYaml(content, rootPath);
     _userThrowsCache[rootPath] = config;
     return config;
   } catch (_) {
@@ -116,15 +91,15 @@ _ThrowsConfig? _loadUserThrowsConfig(ExecutableElement executable) {
 
 class _ThrowsConfig {
   final Map<String, List<String>> map;
-  final bool useSdkMap;
+  final List<String> includePrebuild;
 
   const _ThrowsConfig({
     this.map = const {},
-    this.useSdkMap = false,
+    this.includePrebuild = const [],
   });
 }
 
-_ThrowsConfig _parseThrowsYaml(String content) {
+_ThrowsConfig _parseThrowsYaml(String content, String rootPath) {
   final doc = loadYaml(content);
   if (doc is! YamlMap) {
     return const _ThrowsConfig();
@@ -135,11 +110,90 @@ _ThrowsConfig _parseThrowsYaml(String content) {
     return const _ThrowsConfig();
   }
 
-  final useSdkMap = _readUseSdkMap(throwsNode);
+  final includeSdkErrors = _readIncludeSdkErrors(throwsNode);
+  final includePrebuild = _readIncludePrebuild(throwsNode);
+  if (includeSdkErrors && !includePrebuild.contains('dart')) {
+    includePrebuild.add('dart');
+  }
+  final includeFiles = _readIncludeFiles(throwsNode);
 
-  final mapNode = throwsNode['map'] ?? throwsNode['sdk_throws'] ?? throwsNode;
+  final result = <String, List<String>>{};
+  for (final include in includeFiles) {
+    final includePath = _resolveIncludePath(rootPath, include);
+    final includeMap = _readThrowsFile(includePath);
+    _mergeThrowsMap(result, includeMap);
+  }
+
+  final mapNode =
+      throwsNode[_configCustomErrorsKey] ??
+      throwsNode['map'] ??
+      throwsNode['sdk_throws'] ??
+      throwsNode;
+  final map = _readThrowsMapNode(mapNode);
+  _mergeThrowsMap(result, map);
+  return _ThrowsConfig(map: result, includePrebuild: includePrebuild);
+}
+
+List<String> _readIncludePrebuild(YamlMap throwsNode) {
+  final value = throwsNode[_configIncludePrebuildKey];
+  if (value is String && value.isNotEmpty) {
+    return [value.toLowerCase()];
+  }
+  if (value is YamlList) {
+    return value
+        .whereType<String>()
+        .map((item) => item.toLowerCase())
+        .where((item) => item.isNotEmpty)
+        .toList();
+  }
+  return <String>[];
+}
+
+List<String> _readIncludeFiles(YamlMap throwsNode) {
+  final value =
+      throwsNode[_configIncludePathsKey] ?? throwsNode[_configIncludeFilesKey];
+  if (value is String && value.isNotEmpty) {
+    return [value];
+  }
+  if (value is YamlList) {
+    return value.whereType<String>().where((item) => item.isNotEmpty).toList();
+  }
+  return const [];
+}
+
+String _resolveIncludePath(String rootPath, String includePath) {
+  if (includePath.isEmpty) {
+    return includePath;
+  }
+  if (includePath.startsWith('/')) {
+    return includePath;
+  }
+  return '$rootPath/$includePath';
+}
+
+Map<String, List<String>> _readThrowsFile(String path) {
+  final file = File(path);
+  if (!file.existsSync()) {
+    return const {};
+  }
+  try {
+    final doc = loadYaml(file.readAsStringSync());
+    if (doc is! YamlMap) {
+      return const {};
+    }
+    final throwsNode = doc['throws'];
+    final mapNode = throwsNode is YamlMap
+        ? (throwsNode['map'] ?? throwsNode['sdk_throws'] ?? throwsNode)
+        : doc;
+    return _readThrowsMapNode(mapNode);
+  } catch (_) {
+    return const {};
+  }
+}
+
+Map<String, List<String>> _readThrowsMapNode(Object? mapNode) {
   if (mapNode is! YamlMap) {
-    return _ThrowsConfig(useSdkMap: useSdkMap);
+    return const {};
   }
 
   final result = <String, List<String>>{};
@@ -163,13 +217,53 @@ _ThrowsConfig _parseThrowsYaml(String content) {
       result[key] = [value];
     }
   }
-  return _ThrowsConfig(map: result, useSdkMap: useSdkMap);
+  return result;
 }
 
-bool _readUseSdkMap(YamlMap throwsNode) {
+void _mergeThrowsMap(
+  Map<String, List<String>> target,
+  Map<String, List<String>> source,
+) {
+  for (final entry in source.entries) {
+    final existing = target[entry.key];
+    if (existing == null) {
+      target[entry.key] = entry.value.toList();
+      continue;
+    }
+    final merged = {...existing, ...entry.value}.toList();
+    target[entry.key] = merged;
+  }
+}
+
+bool _readIncludeSdkErrors(YamlMap throwsNode) {
   final value = throwsNode[_configUseSdkMapKey];
   if (value is bool) {
     return value;
   }
   return false;
+}
+
+List<String>? _prebuiltThrowsForKey(String key, List<String> includePrebuild) {
+  for (final entry in includePrebuild) {
+    final map = _prebuiltMap(entry);
+    if (map == null) {
+      continue;
+    }
+    final value = map[key];
+    if (value != null) {
+      return value;
+    }
+  }
+  return null;
+}
+
+Map<String, List<String>>? _prebuiltMap(String name) {
+  switch (name) {
+    case 'dart':
+      return dartSdkErrors;
+    case 'flutter':
+      return flutterErrors;
+    default:
+      return null;
+  }
 }

@@ -100,10 +100,11 @@ class ThrowsExpectedErrorsCollector extends RecursiveAstVisitor<void> {
   void _maybeCollect(AstNode node, Element? element) {
     final expected = expectedErrorsFromElementOrSdk(element);
     if (expected.isNotEmpty) {
-      if (_isHandledByTryCatch(node, expectedErrors: expected.toSet())) {
+      final unhandled = node.unhandledExpectedErrors(expected.toSet());
+      if (unhandled.isEmpty) {
         return;
       }
-      _errors.addAll(expected);
+      _errors.addAll(unhandled);
       return;
     }
 
@@ -119,10 +120,11 @@ class ThrowsExpectedErrorsCollector extends RecursiveAstVisitor<void> {
     if (localExpected == null || localExpected.isEmpty) {
       return;
     }
-    if (_isHandledByTryCatch(node, expectedErrors: localExpected.toSet())) {
+    final unhandled = node.unhandledExpectedErrors(localExpected.toSet());
+    if (unhandled.isEmpty) {
       return;
     }
-    _errors.addAll(localExpected);
+    _errors.addAll(unhandled);
   }
 
   bool _isHandledByTryCatch(

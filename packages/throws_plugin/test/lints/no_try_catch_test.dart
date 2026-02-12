@@ -3,31 +3,31 @@
 import 'package:analyzer/src/lint/registry.dart'; // ignore: implementation_imports
 import 'package:analyzer_testing/analysis_rule/analysis_rule.dart';
 import 'package:test_reflective_loader/test_reflective_loader.dart';
-import 'package:throws_plugin/src/lints/missing_error_handling_rule.dart';
+import 'package:throws_plugin/src/lints/no_try_catch.dart';
 
 import '../stubs.dart';
 
 void main() {
   defineReflectiveSuite(() {
-    defineReflectiveTests(MissingErrorHandlingRuleTest);
+    defineReflectiveTests(NoTryCatchTest);
   });
 }
 
 @reflectiveTest
-class MissingErrorHandlingRuleTest extends AnalysisRuleTest {
+class NoTryCatchTest extends AnalysisRuleTest {
   @override
-  String get analysisRule => 'missing_error_handling';
+  String get analysisRule => 'no_try_catch';
 
   @override
   void setUp() {
-    Registry.ruleRegistry.registerLintRule(MissingErrorHandlingRule());
+    Registry.ruleRegistry.registerLintRule(NoTryCatch());
     addThrowsPackage(this);
     super.setUp();
   }
 
   @override
   Future<void> tearDown() async {
-    Registry.ruleRegistry.unregisterLintRule(MissingErrorHandlingRule());
+    Registry.ruleRegistry.unregisterLintRule(NoTryCatch());
     await super.tearDown();
   }
 
@@ -145,8 +145,8 @@ void main() {
     );
   }
 
-  void test_reports_unhandled_when_try_catch_partial() async {
-    await assertDiagnostics(
+  void test_no_lint_when_try_catch_partial() async {
+    await assertNoDiagnostics(
       '''import 'package:throws/throws.dart';
 $coreStubs
 @Throws(reason: 'Delegates', errors: {FormatException, RangeError})
@@ -161,7 +161,6 @@ void f() {
     // handle
   }
 }''',
-      [lint(517, 14)],
     );
   }
 

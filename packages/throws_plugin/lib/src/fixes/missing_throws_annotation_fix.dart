@@ -1,27 +1,29 @@
 import 'package:analysis_server_plugin/edit/dart/correction_producer.dart';
+import 'package:analysis_server_plugin/edit/dart/dart_fix_kind_priority.dart';
 import 'package:analyzer/dart/ast/ast.dart';
-import 'package:analyzer_plugin/utilities/assist/assist.dart';
 import 'package:analyzer_plugin/utilities/change_builder/change_builder_core.dart';
+import 'package:analyzer_plugin/utilities/fixes/fixes.dart';
 import 'package:throws_plugin/src/data/throws_annotation.dart';
 import 'package:throws_plugin/src/helpers.dart';
 import 'package:throws_plugin/src/utils/extensions/ast_node_x.dart';
 import 'package:throws_plugin/src/utils/extensions/compilation_unit_x.dart';
+import 'package:throws_plugin/src/utils/extensions/dart_file_edit_builder_x.dart';
 
-class AddThrowsAnnotationAssist extends ResolvedCorrectionProducer {
-  static const AssistKind _assistKind = AssistKind(
-    'throws.assist.addThrowsAnnotation',
-    30,
+class MissingThrowsAnnotationFix extends ResolvedCorrectionProducer {
+  static const FixKind _fixKind = FixKind(
+    'throws.fix.missingThrowsAnnotation',
+    DartFixKindPriority.standard,
     'Add @${ThrowsAnnotation.nameCapitalized} annotation',
   );
 
-  AddThrowsAnnotationAssist({required super.context});
+  MissingThrowsAnnotationFix({required super.context});
 
   @override
   CorrectionApplicability get applicability =>
       CorrectionApplicability.singleLocation;
 
   @override
-  AssistKind get assistKind => _assistKind;
+  FixKind get fixKind => _fixKind;
 
   @override
   Future<void> compute(ChangeBuilder builder) async {
@@ -52,16 +54,21 @@ class AddThrowsAnnotationAssist extends ResolvedCorrectionProducer {
       );
 
       final offset = functionNode.insertOffset(metadata);
+      final indent = utils.getLinePrefix(offset);
       await builder.addDartFileEdit(file, (builder) {
+        final throwsRef = builder.importThrows(
+          isCapitalized: expectedErrors.isNotEmpty,
+        );
         builder.addInsertion(offset, (builder) {
+          builder.write(indent);
           if (expectedErrors.isNotEmpty) {
             builder.write(
-              '@${ThrowsAnnotation.nameCapitalized}(reason: \'reason\', errors: {',
+              '@$throwsRef(reason: \'reason\', errors: {',
             );
             builder.write(expectedErrors.join(', '));
             builder.write('})');
           } else {
-            builder.write('@${ThrowsAnnotation.name}');
+            builder.write('@$throwsRef');
           }
           builder.writeln();
         });

@@ -2,7 +2,7 @@ import 'dart:math';
 
 import 'package:throws/throws.dart';
 
-@Throws(errors: {RangeError})
+@Throws(reason: 'reason', errors: {RangeError})
 int parsePositiveInt(String input) {
   final value = int.parse(input);
   if (value < 0) {
@@ -35,19 +35,22 @@ class B implements A {
   void doSome() {
     try {
       throwing();
-    } on ArgumentError catch (e, stackTrace) {
+    } on Exception catch (e, stackTrace) {
       // TODO: handle error
-    } on Exception catch (e, stackTrace) {}
+    }
   }
 }
 
-@Throws(errors: {Exception})
 void main() {
   try {
     throwing();
   } on ArgumentError catch (e, stackTrace) {
     // TODO: handle error
-  } on Exception catch (e, stackTrace) {}
+  } on RangeError catch (e, stackTrace) {
+    // TODO: handle error
+  } on Exception catch (e, stackTrace) {
+    // TODO: handle error
+  }
 }
 
 int getSingle() {
@@ -61,7 +64,8 @@ int errorThrowWithStackTrace() {
   Error.throwWithStackTrace(Exception(), StackTrace.current);
 }
 
-@Throws(errors: {ArgumentError, Exception})
+// @Throws(errors: {ArgumentError, Exception, RangeError})
+@Throws(reason: 'reason', errors: {ArgumentError, Exception})
 int throwing() {
   if (Random().nextBool()) throw ArgumentError();
 

@@ -12,12 +12,6 @@ analysis_options.yaml:
 plugins:
   throws_plugin:
     version: any
-    diagnostics:
-      missing_throws_annotation: error
-      throws_annotation_mismatch: error
-      unused_throws_annotation: error
-      introduced_throws_in_override: error
-      missing_error_handling: error
 ```
 
 ## Lints
@@ -40,11 +34,18 @@ Place throws.yaml at the package root to extend or override known throwing membe
 
 ```yaml
 throws:
-  use_sdk_map: true
-  map:
+  include_prebuilt:
+    - dart
+    - flutter
+  include_paths:
+    - gen/flutter_errors.yaml
+  custom_errors:
     dart:core.Iterable.single:
       - StateError
 ```
 
-If useSdkMap is false, only entries from throws.yaml are used.
-useSdkMap is heuristic only and comes with no guarantees of completeness or accuracy.
+If include_prebuilt is empty, only entries from throws.yaml are used.
+Prebuilt maps are heuristic only and come with no guarantees of completeness or accuracy.
+
+You can also include additional YAML sources (like the output from throws_collector).
+Included files may contain a top-level map or a nested throws/map section.

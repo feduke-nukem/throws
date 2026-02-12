@@ -3,31 +3,31 @@
 import 'package:analyzer/src/lint/registry.dart'; // ignore: implementation_imports
 import 'package:analyzer_testing/analysis_rule/analysis_rule.dart';
 import 'package:test_reflective_loader/test_reflective_loader.dart';
-import 'package:throws_plugin/src/lints/unused_throws_annotation_rule.dart';
+import 'package:throws_plugin/src/lints/unused_throws_annotation.dart';
 
 import '../stubs.dart';
 
 void main() {
   defineReflectiveSuite(() {
-    defineReflectiveTests(UnusedThrowsAnnotationRuleTest);
+    defineReflectiveTests(UnusedThrowsAnnotationTest);
   });
 }
 
 @reflectiveTest
-class UnusedThrowsAnnotationRuleTest extends AnalysisRuleTest {
+class UnusedThrowsAnnotationTest extends AnalysisRuleTest {
   @override
   String get analysisRule => 'unused_throws_annotation';
 
   @override
   void setUp() {
-    Registry.ruleRegistry.registerLintRule(UnusedThrowsAnnotationRule());
+    Registry.ruleRegistry.registerLintRule(UnusedThrowsAnnotation());
     addThrowsPackage(this);
     super.setUp();
   }
 
   @override
   Future<void> tearDown() async {
-    Registry.ruleRegistry.unregisterLintRule(UnusedThrowsAnnotationRule());
+    Registry.ruleRegistry.unregisterLintRule(UnusedThrowsAnnotation());
     await super.tearDown();
   }
 

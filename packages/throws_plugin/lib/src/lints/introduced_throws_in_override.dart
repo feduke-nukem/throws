@@ -5,23 +5,26 @@ import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
 import 'package:analyzer/error/error.dart';
 import 'package:throws_plugin/src/data/throws_annotation.dart';
-import 'package:throws_plugin/src/helpers.dart';
+import 'package:throws_plugin/src/utils/extensions/function_summary_x.dart';
 import 'package:throws_plugin/src/utils/throws_analyzer.dart';
 
-class ThrowsAnnotationMismatchRule extends AnalysisRule {
+class IntroducedThrowsInOverride extends AnalysisRule {
   static const LintCode _code = LintCode(
-    'throws_annotation_mismatch',
-    'The @${ThrowsAnnotation.nameCapitalized} annotation does not match the thrown errors.',
+    'introduced_throws_in_override',
+    'Overrides should not introduce new thrown errors as it violates Liskov Substitution Principle',
     correctionMessage:
-        'Update @${ThrowsAnnotation.nameCapitalized} to match the errors thrown in this function.',
+        'Match the @${ThrowsAnnotation.nameCapitalized} annotation of the overridden member or handle errors.',
+    severity: DiagnosticSeverity.ERROR,
   );
 
-  ThrowsAnnotationMismatchRule()
+  IntroducedThrowsInOverride()
     : super(
-        name: 'throws_annotation_mismatch',
+        name: 'introduced_throws_in_override',
         description:
-            'Ensures @${ThrowsAnnotation.nameCapitalized} matches the errors thrown.',
+            'Disallows new errors in overrides without @${ThrowsAnnotation.nameCapitalized}.',
       );
+
+  static const LintCode code = _code;
 
   @override
   LintCode get diagnosticCode => _code;
@@ -45,12 +48,16 @@ class _Visitor extends SimpleAstVisitor<void> {
     final summaries = ThrowsAnalyzer().analyze(node);
 
     for (final summary in summaries) {
-      if (summary.hasThrowsAnnotation &&
-          !summary.allowAnyExpectedErrors &&
-          summary.thrownErrors.isNotEmpty &&
-          !matchesAnnotation(summary)) {
-        rule.reportAtToken(summary.nameToken);
+      final shouldReportIntroducedThrows =
+          !summary.hasThrowsAnnotation &&
+          (summary.hasUnhandledThrow || summary.hasUnhandledThrowingCall) &&
+          summary.introducesNewErrors;
+
+      if (!shouldReportIntroducedThrows) {
+        continue;
       }
+
+      rule.reportAtToken(summary.nameToken);
     }
   }
 }
