@@ -10,10 +10,9 @@ import 'package:analyzer_plugin/utilities/change_builder/change_builder_core.dar
 import 'package:analyzer_plugin/utilities/fixes/fixes.dart';
 import 'package:throws_plugin/src/data/throws_annotation.dart';
 import 'package:throws_plugin/src/helpers.dart';
-import 'package:throws_plugin/src/utils/extensions/compilation_unit_x.dart';
+import 'package:throws_plugin/src/utils/analysis_cache.dart';
 import 'package:throws_plugin/src/utils/extensions/type_annotation_x.dart';
 import 'package:throws_plugin/src/utils/throw_finder.dart';
-import 'package:throws_plugin/src/utils/throws_analyzer.dart';
 import 'package:throws_plugin/src/utils/throws_expected_errors_collector.dart';
 
 class NotExhaustiveTryCatch extends AnalysisRule {
@@ -53,7 +52,7 @@ class _Visitor extends SimpleAstVisitor<void> {
 
   @override
   void visitCompilationUnit(CompilationUnit node) {
-    final summaries = ThrowsAnalyzer().analyze(node);
+    final summaries = AnalysisCache.throwsSummaries(node);
 
     for (final summary in summaries) {
       if (summary.unhandledThrowingCallNodes.isEmpty) {
@@ -159,7 +158,7 @@ class NotExhaustiveTryCatchFix extends ResolvedCorrectionProducer {
     TryStatement statement,
     CompilationUnit unit,
   ) {
-    final localInfo = unit.collectLocalThrowingInfo();
+    final localInfo = AnalysisCache.localThrowingInfo(unit);
     final collector = ThrowsExpectedErrorsCollector(
       localExpectedErrorsByElement: localInfo.expectedErrorsByElement,
     );

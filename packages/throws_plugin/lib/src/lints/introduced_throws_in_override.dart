@@ -5,8 +5,8 @@ import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
 import 'package:analyzer/error/error.dart';
 import 'package:throws_plugin/src/data/throws_annotation.dart';
+import 'package:throws_plugin/src/utils/analysis_cache.dart';
 import 'package:throws_plugin/src/utils/extensions/function_summary_x.dart';
-import 'package:throws_plugin/src/utils/throws_analyzer.dart';
 
 class IntroducedThrowsInOverride extends AnalysisRule {
   static const LintCode _code = LintCode(
@@ -45,7 +45,7 @@ class _Visitor extends SimpleAstVisitor<void> {
 
   @override
   void visitCompilationUnit(CompilationUnit node) {
-    final summaries = ThrowsAnalyzer().analyze(node);
+    final summaries = AnalysisCache.throwsSummaries(node);
 
     for (final summary in summaries) {
       final shouldReportIntroducedThrows =

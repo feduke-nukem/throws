@@ -11,10 +11,10 @@ import 'package:analyzer_plugin/utilities/fixes/fixes.dart';
 import 'package:analyzer_plugin/utilities/range_factory.dart';
 import 'package:throws_plugin/src/data/throws_annotation.dart';
 import 'package:throws_plugin/src/helpers.dart';
+import 'package:throws_plugin/src/utils/analysis_cache.dart';
 import 'package:throws_plugin/src/utils/extensions/ast_node_x.dart';
 import 'package:throws_plugin/src/utils/extensions/expression_x.dart';
 import 'package:throws_plugin/src/utils/extensions/statement_x.dart';
-import 'package:throws_plugin/src/utils/throws_analyzer.dart';
 
 class NoTryCatch extends AnalysisRule {
   static const LintCode _code = LintCode(
@@ -53,7 +53,7 @@ class _Visitor extends SimpleAstVisitor<void> {
 
   @override
   void visitCompilationUnit(CompilationUnit node) {
-    final summaries = ThrowsAnalyzer().analyze(node);
+    final summaries = AnalysisCache.throwsSummaries(node);
 
     for (final summary in summaries) {
       if (summary.unhandledThrowingCallNodes.isEmpty) {

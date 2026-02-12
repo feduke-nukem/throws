@@ -6,9 +6,9 @@ import 'package:analyzer_plugin/utilities/fixes/fixes.dart';
 import 'package:analyzer_plugin/utilities/range_factory.dart';
 import 'package:throws_plugin/src/data/throws_annotation.dart';
 import 'package:throws_plugin/src/helpers.dart';
+import 'package:throws_plugin/src/utils/analysis_cache.dart';
 import 'package:throws_plugin/src/utils/extensions/annotation_x.dart';
 import 'package:throws_plugin/src/utils/extensions/ast_node_x.dart';
-import 'package:throws_plugin/src/utils/extensions/compilation_unit_x.dart';
 
 class ThrowsAnnotationMismatchFix extends ResolvedCorrectionProducer {
   static const FixKind _fixKind = FixKind(
@@ -56,7 +56,7 @@ class ThrowsAnnotationMismatchFix extends ResolvedCorrectionProducer {
       if (unit == null) {
         return;
       }
-      final localInfo = unit.collectLocalThrowingInfo();
+      final localInfo = AnalysisCache.localThrowingInfo(unit);
       final expectedErrors = collectExpectedErrors(
         body,
         localExpectedErrorsByElement: localInfo.expectedErrorsByElement,

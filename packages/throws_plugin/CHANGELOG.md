@@ -1,3 +1,8 @@
+## 1.1.0
+- Cache per-file analysis results to reduce repeated AST traversals.
+- Reuse local throwing info across lints and fixes for better performance.
+- Improve stability of analyzer execution in large files.
+
 ## 1.0.0
 - Stable release
 

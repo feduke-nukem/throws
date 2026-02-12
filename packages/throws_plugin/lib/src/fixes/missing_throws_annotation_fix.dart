@@ -5,8 +5,8 @@ import 'package:analyzer_plugin/utilities/change_builder/change_builder_core.dar
 import 'package:analyzer_plugin/utilities/fixes/fixes.dart';
 import 'package:throws_plugin/src/data/throws_annotation.dart';
 import 'package:throws_plugin/src/helpers.dart';
+import 'package:throws_plugin/src/utils/analysis_cache.dart';
 import 'package:throws_plugin/src/utils/extensions/ast_node_x.dart';
-import 'package:throws_plugin/src/utils/extensions/compilation_unit_x.dart';
 import 'package:throws_plugin/src/utils/extensions/dart_file_edit_builder_x.dart';
 
 class MissingThrowsAnnotationFix extends ResolvedCorrectionProducer {
@@ -47,7 +47,7 @@ class MissingThrowsAnnotationFix extends ResolvedCorrectionProducer {
       if (unit == null) {
         return;
       }
-      final localInfo = unit.collectLocalThrowingInfo();
+      final localInfo = AnalysisCache.localThrowingInfo(unit);
       final expectedErrors = collectExpectedErrors(
         body,
         localExpectedErrorsByElement: localInfo.expectedErrorsByElement,
