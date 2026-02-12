@@ -1,3 +1,6 @@
+## 1.0.0-alpha.10
+- Improves quick fixes
+
 ## 1.0.0-alpha.9
 - Improves missing clauses and try/catch
 - Improves unhandled function linting
