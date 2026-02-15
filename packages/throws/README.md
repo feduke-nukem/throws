@@ -1,5 +1,9 @@
 # throws
 
+![add_throws](https://github.com/user-attachments/assets/e46f89cd-5a7e-4217-80bf-f29d9820a10c)
+![try_catch](https://github.com/user-attachments/assets/a55c2f57-2bf7-4842-b735-024cea3b61e3)
+
+
 Annotations for documenting and enforcing throwing functions.
 
 This package is the annotation layer. It works with:
