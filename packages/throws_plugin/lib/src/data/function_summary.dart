@@ -13,6 +13,7 @@ class FunctionSummary {
   Element? element;
   bool hasUnhandledThrow = false;
   bool hasUnhandledThrowingCall = false;
+  final List<AstNode> unhandledThrowNodes = [];
   final List<AstNode> unhandledThrowingCallNodes = [];
 
   FunctionSummary({

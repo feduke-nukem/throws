@@ -6,6 +6,20 @@ import 'package:throws_plugin/src/helpers.dart';
 import 'package:throws_plugin/src/utils/overriding_info_collector.dart';
 
 extension FunctionSummaryX on FunctionSummary {
+  InheritedThrowsInfo? get inheritedThrowsInfo {
+    final summary = this;
+    final element = summary.element;
+    if (element is! ExecutableElement) {
+      return null;
+    }
+
+    var info = collectInheritedThrowsInfo(element);
+    if (!info.hasAnnotatedSuper) {
+      info = _findUnitOverrideInfo();
+    }
+    return info.hasAnnotatedSuper ? info : null;
+  }
+
   bool get hasAnnotatedSuper {
     final summary = this;
 
@@ -22,17 +36,9 @@ extension FunctionSummaryX on FunctionSummary {
 
   bool get isCoveredByInheritedThrows {
     final summary = this;
-    final element = summary.element;
-    if (element is! ExecutableElement) {
+    final info = inheritedThrowsInfo;
+    if (info == null) {
       return false;
-    }
-
-    var info = collectInheritedThrowsInfo(element);
-    if (!info.hasAnnotatedSuper) {
-      info = _findUnitOverrideInfo();
-      if (!info.hasAnnotatedSuper) {
-        return false;
-      }
     }
     if (info.allowAny) {
       return true;
@@ -46,17 +52,9 @@ extension FunctionSummaryX on FunctionSummary {
 
   bool get introducesNewErrors {
     final summary = this;
-    final element = summary.element;
-    if (element is! ExecutableElement) {
+    final info = inheritedThrowsInfo;
+    if (info == null || info.allowAny) {
       return false;
-    }
-
-    var info = collectInheritedThrowsInfo(element);
-    if (!info.hasAnnotatedSuper || info.allowAny) {
-      info = _findUnitOverrideInfo();
-      if (!info.hasAnnotatedSuper || info.allowAny) {
-        return false;
-      }
     }
     if (summary.thrownErrors.isEmpty) {
       return false;

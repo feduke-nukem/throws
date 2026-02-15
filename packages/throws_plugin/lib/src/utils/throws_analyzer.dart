@@ -97,6 +97,7 @@ class _FunctionCollector extends RecursiveAstVisitor<void> {
   void visitConstructorDeclaration(ConstructorDeclaration node) {
     final expectedErrors = expectedErrorsFromMetadata(node.metadata).toSet();
     final summary = FunctionSummary(
+      // ignore: deprecated_member_use
       nameToken: node.name ?? node.returnType.beginToken,
       body: node.body,
       hasThrowsAnnotation: hasThrowsAnnotationOnNode(node.metadata),
@@ -149,6 +150,7 @@ class _FunctionBodyVisitor extends RecursiveAstVisitor<void> {
   void visitThrowExpression(ThrowExpression node) {
     if (!node.isHandledByTryCatch()) {
       _summary.hasUnhandledThrow = true;
+      _summary.unhandledThrowNodes.add(node);
       final typeName = node.expression.typeName;
       if (typeName != null) {
         _summary.thrownErrors.add(typeName);
@@ -161,6 +163,7 @@ class _FunctionBodyVisitor extends RecursiveAstVisitor<void> {
   void visitRethrowExpression(RethrowExpression node) {
     if (!node.isHandledByTryCatch()) {
       _summary.hasUnhandledThrow = true;
+      _summary.unhandledThrowNodes.add(node);
       final catchTypeName = node.catchClauseTypeName;
       _summary.thrownErrors.add(catchTypeName ?? 'Object');
     }
@@ -173,6 +176,7 @@ class _FunctionBodyVisitor extends RecursiveAstVisitor<void> {
       final expectedErrors = expectedErrorsFromErrorThrowWithStackTrace(node);
       if (!node.isHandledByTryCatch(expectedErrors)) {
         _summary.hasUnhandledThrow = true;
+        _summary.unhandledThrowNodes.add(node);
         final typeName = typeNameFromErrorThrowWithStackTrace(node);
         if (typeName != null) {
           _summary.thrownErrors.add(typeName);

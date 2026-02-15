@@ -1,4 +1,4 @@
-library simple_project;
+library;
 
 class Foo {
   void bar() {

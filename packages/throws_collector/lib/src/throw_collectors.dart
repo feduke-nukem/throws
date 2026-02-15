@@ -54,6 +54,7 @@ class DeclarationCollector extends RecursiveAstVisitor<void> {
 
   @override
   void visitConstructorDeclaration(ConstructorDeclaration node) {
+    // ignore: deprecated_member_use
     final typeName = node.typeName?.name ?? node.returnType.name;
     final ctorName = node.name?.lexeme;
     final name = ctorName == null ? typeName : '$typeName.$ctorName';
@@ -185,9 +186,7 @@ String? typeNameFromExpression(Expression expression) {
       return identifier.name;
   }
 
-  final typeName = expression.staticType?.getDisplayString(
-    withNullability: false,
-  );
+  final typeName = expression.staticType?.getDisplayString();
   if (typeName == null || typeName == 'InvalidType') {
     return null;
   }

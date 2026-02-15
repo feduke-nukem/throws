@@ -5,6 +5,7 @@ import 'input_resolver.dart';
 import 'map_writer.dart';
 import 'options.dart';
 
+/// Main entry point for the throws_collector package.
 Future<void> run(List<String> args) async {
   final config = parseArgs(args);
   if (config.showHelp) {

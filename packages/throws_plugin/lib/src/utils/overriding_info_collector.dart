@@ -17,7 +17,12 @@ class OverrideInfoCollector extends RecursiveAstVisitor<void> {
 
   @override
   void visitClassDeclaration(ClassDeclaration node) {
-    for (final member in node.members) {
+    final body = node.body;
+    if (body is! BlockClassBody) {
+      super.visitClassDeclaration(node);
+      return;
+    }
+    for (final member in body.members) {
       if (member is MethodDeclaration) {
         if (member.name.lexeme == _memberName &&
             hasThrowsAnnotationOnNode(member.metadata) &&

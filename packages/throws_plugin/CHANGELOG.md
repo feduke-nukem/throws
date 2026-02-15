@@ -1,3 +1,6 @@
+## 1.1.1
+- Improve introduced_throws_in_override lint
+
 ## 1.1.0
 - Cache per-file analysis results to reduce repeated AST traversals.
 - Reuse local throwing info across lints and fixes for better performance.

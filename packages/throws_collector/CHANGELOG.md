@@ -1,3 +1,8 @@
+## 2.2.0+1
+
+- Remove deprecated analyzer usage
+- Fix pub.dev scoring
+
 ## 2.2.0
 
 - Add `dart_sdk` and `flutter_sdk` inputs with explicit output files.

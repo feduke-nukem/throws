@@ -40,7 +40,7 @@ extension ExpressionX on Expression {
       }
     }
     final staticType = expression.staticType;
-    final staticName = staticType?.getDisplayString(withNullability: false);
+    final staticName = staticType?.getDisplayString();
     if (staticName != null && staticName != 'dynamic') {
       return staticName;
     }
