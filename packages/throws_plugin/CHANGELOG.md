@@ -10,6 +10,7 @@
   `handleError` and `listen(onError:)` handle them.
 - A future or stream stored in a local variable is handled where it is read
   (`final f = load(); try { await f; } ...`).
+- Files under `test/`, `integration_test/` and `test_driver/` are not checked.
 - Fix: `unused_throws_annotation` no longer depends on the declaration order of
   local functions that throw only untracked errors.
 
