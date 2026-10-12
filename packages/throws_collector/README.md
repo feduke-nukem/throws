@@ -44,6 +44,8 @@ input:
       package:
         name: bloc
         version: 9.2.0
+  - dependencies:
+      exclude: [meta]
 ```
 
 Input types:
@@ -52,6 +54,28 @@ Input types:
 - path: local directory
 - git: git URL (shallow clone)
 - package: pub.dev package name and version
+- dependencies: every package in pubspec.lock (shorthand: `- dependencies`)
+
+## Dependencies
+
+`dependencies` writes one `<package>.yaml` per locked package to the output
+directory. Run `pub get` first: files are resolved through the project's
+`.dart_tool/package_config.json`, so types from other packages resolve and the
+dependencies need no `pub get` of their own.
+
+- SDK packages (`flutter`, `flutter_test`, ...) are skipped; use `flutter_sdk`.
+- `exclude` skips packages by name.
+- Each file starts with a stamp (`# http 1.2.2`, plus the commit for git
+  packages). A package whose stamp matches pubspec.lock is not collected
+  again; path packages always are. Delete the output to force a run.
+
+Include the whole directory in throws.yaml:
+
+```yaml
+throws:
+  include:
+    - throws_collector_gen/
+```
 
 ## Output
 

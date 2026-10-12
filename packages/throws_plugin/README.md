@@ -82,7 +82,8 @@ throws:
   prebuilt: [dart]
 
   # YAML files, or directories of them, in the same format as `members`
-  # (e.g. throws_collector output).
+  # (e.g. throws_collector output; its `dependencies` input writes a map
+  # per package in pubspec.lock).
   include:
     - throws_collector_gen/
 

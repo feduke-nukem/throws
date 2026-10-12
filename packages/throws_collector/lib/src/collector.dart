@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:analyzer/dart/analysis/analysis_context.dart';
 import 'package:analyzer/dart/analysis/analysis_context_collection.dart';
 import 'package:analyzer/dart/analysis/results.dart';
 
@@ -47,22 +48,51 @@ Future<Map<String, Map<String, Set<String>>>> collectThrows({
       ),
       sdkLibraryMap,
     );
-    final collector = DeclarationCollector(libraryIdentifier);
-
-    resolved.unit.accept(collector);
-
-    for (final entry in collector.entries.entries) {
-      if (entry.value.isEmpty) {
-        continue;
-      }
-      ((entries[libraryIdentifier] ??= {})[entry.key] ??= {}).addAll(
-        entry.value,
-      );
-    }
+    _addUnit(entries, resolved, libraryIdentifier);
   }
 
   spinner.done(
     entries.values.fold(0, (count, members) => count + members.length),
   );
   return entries;
+}
+
+/// Errors of [files] resolved in [context], keyed by their library URIs.
+///
+/// Used for dependencies, whose files resolve through the package config of
+/// the project that depends on them.
+Future<Map<String, Map<String, Set<String>>>> collectThrowsInContext(
+  AnalysisContext context,
+  List<File> files,
+) async {
+  final entries = <String, Map<String, Set<String>>>{};
+  final spinner = Spinner(total: files.length);
+  for (var index = 0; index < files.length; index++) {
+    final path = files[index].absolute.path;
+    spinner.tick(index + 1, path);
+    final resolved = await context.currentSession.getResolvedUnit(path);
+    if (resolved is! ResolvedUnitResult) {
+      throw Exception('Failed to analyze $path');
+    }
+    _addUnit(entries, resolved, resolved.libraryElement.uri.toString());
+  }
+  spinner.done(
+    entries.values.fold(0, (count, members) => count + members.length),
+  );
+  return entries;
+}
+
+void _addUnit(
+  Map<String, Map<String, Set<String>>> entries,
+  ResolvedUnitResult resolved,
+  String libraryIdentifier,
+) {
+  final collector = DeclarationCollector(libraryIdentifier);
+  resolved.unit.accept(collector);
+  for (final entry in collector.entries.entries) {
+    if (entry.value.isEmpty) {
+      continue;
+    }
+    ((entries[libraryIdentifier] ??= {})[entry.key] ??= {}).addAll(entry.value);
+  }
 }

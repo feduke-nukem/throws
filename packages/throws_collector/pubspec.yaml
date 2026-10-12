@@ -1,6 +1,6 @@
 name: throws_collector
 description: CLI tool to collect thrown exceptions and errors from Dart sources.
-version: 3.0.0
+version: 3.1.0
 repository: https://github.com/feduke-nukem/throws/tree/main/packages/throws_collector
 homepage: https://github.com/feduke-nukem/throws/tree/main/packages/throws_collector
 

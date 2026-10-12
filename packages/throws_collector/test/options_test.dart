@@ -101,6 +101,22 @@ input:
     ]);
   });
 
+  test('parses dependencies inputs', () async {
+    final parsed = await _parse('''
+input:
+  - dependencies
+  - dependencies:
+      exclude: [meta, collection]
+''');
+    final sources = parsed.inputs
+        .map((input) => input.source as DependenciesInputSource)
+        .toList();
+    expect(sources.map((source) => source.exclude), [
+      isEmpty,
+      {'meta', 'collection'},
+    ]);
+  });
+
   test('skips malformed inputs', () async {
     final parsed = await _parse('''
 input:

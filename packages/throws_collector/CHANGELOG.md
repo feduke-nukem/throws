@@ -1,3 +1,7 @@
+## 3.1.0
+- New `dependencies` input: one map per package in pubspec.lock, resolved
+  through the project's package config. Unchanged packages are skipped.
+
 ## 3.0.0
 - **Breaking:** output groups errors by library URI, then member, matching
   `members` in throws.yaml v2. Dart output is `Map<String, Map<String, List<String>>>`.
