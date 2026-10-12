@@ -202,6 +202,18 @@ plugin isolate analyzes the project again. throws_plugin itself takes 120 ms
 for all 487 files (warm JIT; p95 0.8 ms, max 2.4 ms per file) next to 13.6 s of
 resolution. Measure your project with `dart run tool/benchmark.dart <dir>`.
 
+In the IDE (the same analysis server over LSP, warm cache, one run each):
+
+| Setup | First diagnostics | Memory (settled / peak) | Edit to diagnostics |
+| --- | --- | --- | --- |
+| No plugin | 4.4 s | 1.3 / 1.3 GB | 307 ms |
+| Empty analyzer plugin | 36.5 s | 4.2 / 4.8 GB | 328 ms |
+| throws_plugin | 25.0 s | 4.2 / 4.7 GB | 319 ms |
+
+Any analyzer plugin costs about 3 GB of memory and 20–30 s before the first
+diagnostics on a project of this size. Diagnostics after an edit arrive
+10–20 ms later than without a plugin.
+
 ## Limitations
 
 - Casts (`as`) and null checks (`!`) are not treated as throwing: they throw
