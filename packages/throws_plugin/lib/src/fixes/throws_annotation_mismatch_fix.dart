@@ -1,14 +1,16 @@
 import 'package:analysis_server_plugin/edit/dart/correction_producer.dart';
 import 'package:analysis_server_plugin/edit/dart/dart_fix_kind_priority.dart';
 import 'package:analyzer/dart/ast/ast.dart';
+import 'package:analyzer/dart/element/type.dart';
 import 'package:analyzer_plugin/utilities/change_builder/change_builder_core.dart';
+import 'package:analyzer_plugin/utilities/change_builder/change_builder_dart.dart';
 import 'package:analyzer_plugin/utilities/fixes/fixes.dart';
 import 'package:analyzer_plugin/utilities/range_factory.dart';
 import 'package:throws_plugin/src/data/throws_annotation.dart';
 import 'package:throws_plugin/src/helpers.dart';
 import 'package:throws_plugin/src/utils/analysis_cache.dart';
-import 'package:throws_plugin/src/utils/extensions/annotation_x.dart';
 import 'package:throws_plugin/src/utils/extensions/ast_node_x.dart';
+import 'package:throws_plugin/src/utils/extensions/dart_file_edit_builder_x.dart';
 
 class ThrowsAnnotationMismatchFix extends ResolvedCorrectionProducer {
   static const FixKind _fixKind = FixKind(
@@ -21,91 +23,68 @@ class ThrowsAnnotationMismatchFix extends ResolvedCorrectionProducer {
 
   @override
   CorrectionApplicability get applicability =>
-      CorrectionApplicability.singleLocation;
+      CorrectionApplicability.acrossSingleFile;
+
+  @override
+  FixKind? get multiFixKind => _multiFixKind;
+
+  static const FixKind _multiFixKind = FixKind(
+    'throws.fix.throwsAnnotationMismatch.multi',
+    DartFixKindPriority.inFile,
+    'Update @Throws annotations everywhere in file',
+  );
 
   @override
   FixKind get fixKind => _fixKind;
 
   @override
   Future<void> compute(ChangeBuilder builder) async {
-    try {
-      final functionNode = node.enclosingFunction;
-      if (functionNode == null) {
-        return;
-      }
-
-      final metadata = functionNode.metadata;
-      if (!hasThrowsAnnotationOnNode(metadata)) {
-        return;
-      }
-
-      final targetAnnotation = metadata.firstWhere(
-        (entry) {
-          final name = entry.maybeVerifiedName;
-          return name == ThrowsAnnotation.nameCapitalized ||
-              name == ThrowsAnnotation.name;
-        },
-      );
-
-      final body = functionNode.functionBody;
-      if (body == null) {
-        return;
-      }
-
-      final unit = functionNode.thisOrAncestorOfType<CompilationUnit>();
-      if (unit == null) {
-        return;
-      }
-      final localInfo = AnalysisCache.localThrowingInfo(unit);
-      final expectedErrors = collectExpectedErrors(
-        body,
-        localExpectedErrorsByElement: localInfo.expectedErrorsByElement,
-      );
-      final reason = _reasonFromAnnotation(targetAnnotation);
-      final reasonStr = reason != null
-          ? 'reason: ${_stringLiteral(reason)}, '
-          : '';
-
-      await builder.addDartFileEdit(file, (builder) {
-        builder.addReplacement(range.node(targetAnnotation), (builder) {
-          if (expectedErrors.isNotEmpty) {
-            builder.write(
-              '@${ThrowsAnnotation.nameCapitalized}(${reasonStr}errors: {',
-            );
-            builder.write(expectedErrors.join(', '));
-            builder.write('})');
-          } else {
-            builder.write('@${ThrowsAnnotation.name}');
-          }
-        });
-      });
-    } catch (_) {
+    final functionNode = node.enclosingFunction;
+    final summary = AnalysisCache.analysis(unit).summaryFor(functionNode);
+    final targetAnnotation = functionNode == null
+        ? null
+        : findThrowsAnnotation(functionNode.metadata);
+    if (summary == null || targetAnnotation == null) {
       return;
     }
+
+    await builder.addDartFileEdit(file, (builder) {
+      replaceThrowsAnnotation(
+        builder,
+        targetAnnotation,
+        summary.escaping.sortedTypes,
+      );
+    });
   }
 }
 
-String? _reasonFromAnnotation(Annotation annotation) {
-  final arguments = annotation.arguments?.arguments;
-  if (arguments == null || arguments.isEmpty) {
-    return null;
-  }
-
-  for (final argument in arguments) {
-    if (argument is NamedExpression && argument.name.label.name == 'reason') {
-      final expression = argument.expression;
-      if (expression is StringLiteral) {
-        return expression.stringValue;
-      }
+/// Replaces [annotation] with `@Throws(errors: {types})`, keeping its reason,
+/// or with `@throws` when [types] is empty.
+void replaceThrowsAnnotation(
+  DartFileEditBuilder builder,
+  Annotation annotation,
+  List<DartType> types,
+) {
+  final reason = _reasonFromAnnotation(annotation);
+  final reasonStr = reason != null ? 'reason: ${_stringLiteral(reason)}, ' : '';
+  builder.addReplacement(range.node(annotation), (builder) {
+    if (types.isNotEmpty) {
+      builder.write(
+        '@${ThrowsAnnotation.nameCapitalized}(${reasonStr}errors: {',
+      );
+      writeTypeList(builder, types);
+      builder.write('})');
+    } else {
+      builder.write('@${ThrowsAnnotation.name}');
     }
-  }
+  });
+}
 
-  final firstArg = arguments.first;
-  if (firstArg is StringLiteral) {
-    return firstArg.stringValue;
-  }
-
-  return null;
+String? _reasonFromAnnotation(Annotation annotation) {
+  return annotation.elementAnnotation
+      ?.computeConstantValue()
+      ?.getField('reason')
+      ?.toStringValue();
 }
 
 String _stringLiteral(String value) {

@@ -72,11 +72,20 @@ run_pub_get: false for git inputs that cannot be resolved without extra setup.
 For Dart output, the map name is inferred from the file name and camel-cased
 (for example, flutter_errors.g.dart -> flutterErrors).
 
-The tool writes a Dart/JSON/YAML file containing a map of thrown errors.
-Keys are <library-uri>.<enclosing>.<member> or <library-uri>.<member>.
+The tool writes a Dart/JSON/YAML file with thrown errors per library URI, then
+per member, in the format of `members` in throws.yaml:
+
+```yaml
+'package:bloc/src/bloc.dart':
+  'Bloc.add': ['StateError']
+  'Bloc.new': ['ArgumentError']
+```
+
+Member names follow Dart tear-off syntax: `function`, `Class.member`,
+`Class.new` and `Class.named`.
 
 ## Notes
 
 - Uses resolved AST; results are best-effort and not guaranteed to be complete.
 - Generated entries may include inferred types from static analysis.
-- Collector output can be included in throws.yaml via include_paths.
+- Collector output can be included in throws.yaml via `include`.

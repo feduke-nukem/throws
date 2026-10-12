@@ -39,7 +39,7 @@ $coreStubs
 void f() {
   throw RangeError('x');
 }''',
-      [lint(416, 1)],
+      [lint(347, 1)],
     );
   }
 
@@ -159,6 +159,86 @@ class B extends A {
       // handle
     }
   }
+}''',
+    );
+  }
+
+  void test_no_lint_when_declared_supertype() async {
+    await assertNoDiagnostics(
+      '''import 'package:throws/throws.dart';
+$coreStubs
+@Throws(errors: {Exception})
+void f() {
+  throw FormatException('x');
+}''',
+    );
+  }
+
+  void test_reports_when_declared_error_not_thrown() async {
+    final code =
+        '''import 'package:throws/throws.dart';
+$coreStubs
+@Throws(errors: {FormatException, ArgumentError})
+void f() {
+  throw FormatException('x');
+}''';
+    await assertDiagnostics(code, [lint(code.indexOf('f()'), 1)]);
+  }
+
+  void test_no_lint_when_declared_error_untracked() async {
+    newFile('$testPackageRootPath/throws.yaml', '''
+throws:
+  track:
+    - exception
+''');
+    await assertNoDiagnostics(
+      r'''import 'package:throws/throws.dart';
+@Throws(errors: {Exception, ArgumentError})
+void f() {
+  throw Exception('x');
+}''',
+    );
+  }
+
+  void test_no_lint_when_extra_error_caught_locally() async {
+    await assertNoDiagnostics(
+      '''import 'package:throws/throws.dart';
+$coreStubs
+@Throws(errors: {FormatException})
+void f(bool b) {
+  try {
+    if (b) throw RangeError('x');
+  } on RangeError {
+    // handle
+  }
+  throw FormatException('x');
+}''',
+    );
+  }
+
+  void test_reports_when_called_function_adds_error() async {
+    final code =
+        '''import 'package:throws/throws.dart';
+$coreStubs
+@Throws(errors: {RangeError})
+void boom() {
+  throw RangeError('x');
+}
+
+@Throws(errors: {FormatException})
+void f() {
+  boom();
+  throw FormatException('x');
+}''';
+    await assertDiagnostics(code, [lint(code.indexOf('f()'), 1)]);
+  }
+
+  void test_no_lint_for_unknown_thrown_error() async {
+    await assertNoDiagnostics(
+      r'''import 'package:throws/throws.dart';
+@Throws(errors: {ArgumentError})
+void f(dynamic e) {
+  throw e;
 }''',
     );
   }

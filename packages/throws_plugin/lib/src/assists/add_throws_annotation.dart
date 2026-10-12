@@ -42,9 +42,9 @@ class AddThrowsAnnotationAssist extends ResolvedCorrectionProducer {
       final indent = utils.getLinePrefix(offset);
       final insertOffset = offset - indent.length;
       builder.addInsertion(insertOffset, (builder) {
-        builder.writeln(
-          '$indent@$throwsRef(reason: \'reason\', errors: {})',
-        );
+        builder.write('$indent@$throwsRef(reason: ');
+        builder.addSimpleLinkedEdit('REASON', "'reason'");
+        builder.writeln(', errors: {})');
       });
     });
   }

@@ -35,45 +35,105 @@ Diagnostics are reported at the call site for unhandled throws.
 
 ## Assists and fixes
 
-- Add @Throws or @throws annotations
-- Wrap in try/catch with inferred errors
-- Fixes for mismatch or missing annotations
+Assists:
+- Add `@Throws()` or `@throws` to a function.
+- Specify errors: turn `@throws` / `@Throws()` into `@Throws(errors: {...})`
+  with the errors the function throws.
+
+Fixes:
+- `missing_throws_annotation`: add `@Throws` with the inferred errors.
+- `throws_annotation_mismatch`: update `@Throws` errors.
+- `unused_throws_annotation`: remove the annotation.
+- `no_try_catch`:
+  - wrap the statement in try/catch, with a clause per error or one `on Object`
+    clause (`final x = call();` becomes `late final T x; try { x = call(); }`,
+    `void f() => call();` becomes a block body);
+  - add `await` to a future-returning call inside try/catch;
+  - add the errors to the enclosing `@Throws`, or annotate the enclosing
+    function.
+- `not_exhaustive_try_catch`: add the missing catch clauses (subtypes before
+  supertypes), a default `on Object` clause, or add the errors to `@Throws`.
+- `introduced_throws_in_override`: add the errors to `@Throws` of the
+  overridden member (when it is in your package), or wrap the call in try/catch.
+
+Generated code selects the `reason` and the catch bodies as linked edits.
+
+The annotation fixes for `missing_throws_annotation`,
+`throws_annotation_mismatch` and `unused_throws_annotation` can be applied to
+every diagnostic in a file at once ("fix all in file" in the IDE). `dart fix`
+does not apply analyzer plugin fixes.
 
 ## throws.yaml
 
-Place throws.yaml at the package root to extend or override known throwing members.
+Place throws.yaml at the package root to declare errors of members outside your
+package (SDK or dependencies).
 
 ```yaml
 throws:
-  include_prebuilt:
-    - dart
-    - flutter
-  include_paths:
-    - gen/flutter_errors.yaml
-  custom_errors:
-    dart:core.Iterable.single:
-      - StateError
+  # Errors to check: exception (subtypes of Exception), error (subtypes of
+  # Error), or both (default). Types that are neither are always checked.
+  track: [exception, error]
+
+  # Bundled maps: dart, flutter. Off by default.
+  prebuilt: [dart]
+
+  # YAML files, or directories of them, in the same format as `members`
+  # (e.g. throws_collector output).
+  include:
+    - throws_collector_gen/
+
+  # Library URI, then member: errors (a name or a list).
+  members:
+    dart:core:
+      Iterable.single: [StateError]
+      int.parse: FormatException
+    package:http/http.dart:
+      get: [ClientException]
+      Client.new: [ArgumentError]
 ```
 
+Member names follow Dart tear-off syntax: `function` for top-level functions,
+`Class.member` for methods, getters and setters, `Class.new` and
+`Class.named` for constructors.
+
 Notes:
-- If include_prebuilt is empty, only entries from throws.yaml are used.
 - Prebuilt maps are heuristic only and come with no guarantees of completeness
   or accuracy.
-- include_paths may point to YAML files or directories containing YAML files
-  (only .yaml/.yml files are read).
-- Included files may contain a top-level map or a nested throws/map section.
+- Entries from `members` and `include` take precedence over prebuilt maps.
+- Unknown keys are ignored. Version 1 keys (`include_prebuilt`,
+  `include_paths`, `custom_errors`, `include_sdk_errors`) are no longer read.
 
 ## How errors are resolved
 
 When evaluating a call, the plugin resolves expected errors in this order:
 1. @Throws/@throws on the target element.
-2. throws.yaml maps (custom_errors and include_paths).
+2. throws.yaml (`members` and `include`).
 3. Prebuilt maps (dart/flutter) if enabled.
 4. Overrides (walks the override chain until a throwing element is found).
 
 If none are found, the call is treated as non-throwing.
 
+Errors are compared as types, including subtypes: `on Exception` handles a
+call that throws `FormatException`, and `@Throws(errors: {Exception})` covers a
+thrown `FormatException`. Names from throws.yaml and prebuilt maps are resolved
+in the scope of the library that declares the member; unresolved names count as
+an unknown error, which any catch clause handles.
+
+## Futures
+
+Errors of a call that returns a `Future` arrive asynchronously:
+- a surrounding try/catch handles them only if the call is awaited
+  (`await f()`, `await Future.wait([f()])`);
+- `.catchError`, `.ignore()` and `.then(..., onError: ...)` handle all of them,
+  `.onError<E>` handles subtypes of `E`.
+
+A future stored in a variable and awaited later is not tracked.
+
 ## Limitations
+
+- Casts (`as`) and null checks (`!`) are not treated as throwing: they throw
+  `TypeError`, a programming error.
+- A `catch` that may `rethrow` (even conditionally) does not count as handling.
 
 - Analysis is best-effort and depends on available type information.
 - SDK/dependency coverage depends on map data (prebuilt or collected).

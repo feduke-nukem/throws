@@ -1,6 +1,6 @@
 name: throws_plugin
 description: Analyzer plugin for @Throws/@throws usage.
-version: 1.1.1
+version: 2.0.0
 repository: https://github.com/feduke-nukem/throws/tree/main/packages/throws_plugin
 homepage: https://github.com/feduke-nukem/throws/tree/main/packages/throws_plugin
 screenshots:
@@ -8,20 +8,20 @@ screenshots:
     path: 'art/logo.png'
 
 environment:
-  sdk: ^3.10.0
+  sdk: ^3.11.0
 
 dependencies:
-  analysis_server_plugin: ^0.3.8
-  analyzer_plugin: ^0.14.2
-  analyzer: ^10.0.2
-  yaml: ^3.1.2
+  analysis_server_plugin: ^0.3.24
+  analyzer_plugin: ^0.14.18
+  analyzer: ^14.5.0
+  yaml: ^3.1.4
 
 dev_dependencies:
   lints: ^6.0.0
-  analyzer_testing: ^0.1.10
-  test_reflective_loader: ^0.4.0
-  test: ^1.25.0
-  throws_collector: ^2.1.0
+  analyzer_testing: ^0.4.3
+  test_reflective_loader: ^0.6.0
+  test: ^1.33.0
+  throws_collector: ^3.0.0
 
 dependency_overrides:
   throws_collector:

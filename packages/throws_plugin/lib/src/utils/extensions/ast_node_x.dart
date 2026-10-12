@@ -1,8 +1,5 @@
 import 'package:analyzer/dart/ast/ast.dart';
-import 'package:throws_plugin/src/data/throws_annotation.dart';
-import 'package:throws_plugin/src/utils/extensions/annotation_x.dart';
-import 'package:throws_plugin/src/utils/extensions/try_statement_x.dart';
-import 'package:throws_plugin/src/utils/extensions/type_annotation_x.dart';
+import 'package:throws_plugin/src/helpers.dart' as helpers;
 
 extension AstNodeX on AstNode {
   AstNode? get enclosingFunction {
@@ -54,31 +51,11 @@ extension AstNodeX on AstNode {
     return false;
   }
 
-  bool get isWithinTryWithCatch {
-    AstNode? current = parent;
-    while (current != null) {
-      if (current is TryStatement) {
-        if (current.catchClauses.isNotEmpty && isWithin(current.body)) {
-          return true;
-        }
-      }
-      current = current.parent;
-    }
-    return false;
-  }
-
   List<Annotation> get metadata => switch (this) {
     FunctionDeclaration(:final metadata) => metadata,
     MethodDeclaration(:final metadata) => metadata,
     ConstructorDeclaration(:final metadata) => metadata,
     _ => const [],
-  };
-
-  FunctionBody? get functionBody => switch (this) {
-    FunctionDeclaration(:final functionExpression) => functionExpression.body,
-    MethodDeclaration(:final body) => body,
-    ConstructorDeclaration(:final body) => body,
-    _ => null,
   };
 
   int insertOffset(List<Annotation> metadata) => switch (this) {
@@ -106,84 +83,16 @@ extension AstNodeX on AstNode {
 
   Annotation? findThrowsAnnotation() {
     final node = this;
-
     if (node is Annotation) {
-      final name = node.maybeVerifiedName;
-      if (name == ThrowsAnnotation.nameCapitalized ||
-          name == ThrowsAnnotation.name) {
-        return node;
+      final match = helpers.findThrowsAnnotation([node]);
+      if (match != null) {
+        return match;
       }
     }
-
     final functionNode = node.enclosingFunction;
     if (functionNode == null) {
       return null;
     }
-
-    for (final annotation in functionNode.metadata) {
-      final name = annotation.maybeVerifiedName;
-      if (name == ThrowsAnnotation.nameCapitalized ||
-          name == ThrowsAnnotation.name) {
-        return annotation;
-      }
-    }
-    return null;
-  }
-
-  bool isHandledByTryCatch([Set<String>? expectedErrors]) {
-    final node = this;
-    AstNode? current = node.parent;
-    while (current != null) {
-      if (current is TryStatement) {
-        if (isWithin(current.body)) {
-          if (expectedErrors == null || expectedErrors.isEmpty) {
-            if (current.providesHandling) {
-              return true;
-            }
-          } else if (current.catchesAllExpected(expectedErrors)) {
-            return true;
-          }
-        }
-      }
-      current = current.parent;
-    }
-    return false;
-  }
-
-  Set<String> unhandledExpectedErrors(Set<String> expectedErrors) {
-    if (expectedErrors.isEmpty) {
-      return const {};
-    }
-
-    final remaining = expectedErrors.toSet();
-    AstNode? current = parent;
-
-    while (current != null) {
-      if (current is TryStatement && isWithin(current.body)) {
-        final handled = current.handledErrors(remaining);
-        remaining.removeAll(handled);
-        if (remaining.isEmpty) {
-          return remaining;
-        }
-      }
-      current = current.parent;
-    }
-
-    return remaining;
-  }
-
-  bool isWithin(AstNode container) {
-    return offset >= container.offset && end <= container.end;
-  }
-
-  String? get catchClauseTypeName {
-    AstNode? current = parent;
-    while (current != null) {
-      if (current is CatchClause) {
-        return current.exceptionType?.typeName;
-      }
-      current = current.parent;
-    }
-    return null;
+    return helpers.findThrowsAnnotation(functionNode.metadata);
   }
 }

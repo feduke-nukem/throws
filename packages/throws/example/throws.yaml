@@ -1,13 +1,6 @@
-# Throws analyzer config
-# Extend/override known throwing members.
-# Keys are "<library-uri>.<enclosing>.<member>" or "<library-uri>.<member>" for top-level.
-# Example: dart:core.Iterable.single
-
+# throws_plugin config. See the throws_plugin README for all options.
 throws:
-  include_prebuilt:
-    - dart
-  include_paths:
-    - gen/flutter_errors.yaml
-  custom_errors:
-    dart:core.Iterable.single:
-      - StateError
+  prebuilt: [dart]
+  members:
+    dart:core:
+      Iterable.single: [StateError]

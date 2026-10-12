@@ -1,9 +1,12 @@
 import 'package:analyzer/dart/ast/ast.dart';
-import 'package:analyzer/dart/ast/token.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
+import 'package:analyzer/dart/element/element.dart';
+import 'package:analyzer/dart/element/type.dart';
 
 class DeclarationCollector extends RecursiveAstVisitor<void> {
   final String uri;
+
+  /// Errors per member path (`Class.member`, `Class.new` or `function`).
   final Map<String, Set<String>> entries = {};
   final List<String> _classStack = [];
 
@@ -54,10 +57,11 @@ class DeclarationCollector extends RecursiveAstVisitor<void> {
 
   @override
   void visitConstructorDeclaration(ConstructorDeclaration node) {
-    // ignore: deprecated_member_use
-    final typeName = node.typeName?.name ?? node.returnType.name;
-    final ctorName = node.name?.lexeme;
-    final name = ctorName == null ? typeName : '$typeName.$ctorName';
+    final typeName = node.declaredFragment?.element.enclosingElement.name;
+    if (typeName == null) {
+      return;
+    }
+    final name = node.name?.lexeme ?? 'new';
     final errors = _collectErrors(node.body, parent: node);
     _maybeAdd(name, errors, selfType: typeName, allowObjectFallback: false);
   }
@@ -95,10 +99,9 @@ class DeclarationCollector extends RecursiveAstVisitor<void> {
 
   String _buildKey(String memberName) {
     if (_classStack.isEmpty) {
-      return '$uri.$memberName';
+      return memberName;
     }
-    final className = _classStack.join('.');
-    return '$uri.$className.$memberName';
+    return '${_classStack.join('.')}.$memberName';
   }
 
   bool _isPrivateEntry(String memberName) {
@@ -180,10 +183,6 @@ String? typeNameFromExpression(Expression expression) {
       return constructorName.type.name.lexeme;
     case TypeLiteral(:final type):
       return type.toSource();
-    case SimpleIdentifier(:final name):
-      return name;
-    case PrefixedIdentifier(:final identifier):
-      return identifier.name;
   }
 
   final typeName = expression.staticType?.getDisplayString();
@@ -193,30 +192,76 @@ String? typeNameFromExpression(Expression expression) {
   return typeName;
 }
 
+// "throws", "is thrown", "completes (the future) with", "fails with".
+final _throwWord = RegExp(
+  r'\bthrow|\bcomplet\w*\s+(?:the\s+(?:returned\s+)?future\s+)?with|\bfail\w*\s+with',
+  caseSensitive: false,
+);
+final _sentenceEnd = RegExp(r'[.!?](?=\s|$)|\n\s*\n');
+
+/// Error classes referenced as `[Name]` in sentences of [comment] that
+/// mention throwing, e.g. "Throws a [StateError] if empty" or "completes the
+/// future with a [FileSystemException]".
+///
+/// Only references the analyzer resolves to subtypes of `Error` or
+/// `Exception` count, so names in examples and prose are ignored.
 Set<String> errorsFromComment(Comment comment) {
-  final documentation = documentationCommentsParser(comment.tokens).join('\n');
-  final regex = RegExp(r'\b([A-Z][A-Za-z0-9_]*(?:Exception|Error))\b');
-  final matches = regex.allMatches(documentation);
   final result = <String>{};
-  for (final match in matches) {
-    final name = match.group(1);
-    if (name != null) {
-      result.add(name);
+  for (final reference in comment.references) {
+    final expression = reference.expression;
+    final element = expression is Identifier ? expression.element : null;
+    if (element is! InterfaceElement || !_isErrorOrException(element)) {
+      continue;
+    }
+    final sentence = _sentenceAround(comment, reference.offset);
+    if (sentence != null && _throwWord.hasMatch(sentence)) {
+      result.add(element.name!);
     }
   }
   return result;
 }
 
-List<String> documentationCommentsParser(List<Token>? comments) {
-  const docCommentPrefix = '///';
-  return comments
-          ?.map(
-            (Token line) => line.length > docCommentPrefix.length
-                ? line.toString().substring(docCommentPrefix.length)
-                : '',
-          )
-          .toList() ??
-      <String>[];
+bool _isErrorOrException(InterfaceElement element) {
+  bool isRoot(InterfaceType type) =>
+      type.element.library.isDartCore &&
+      (type.element.name == 'Error' || type.element.name == 'Exception');
+  return isRoot(element.thisType) || element.allSupertypes.any(isRoot);
+}
+
+/// The sentence of [comment] containing the source [offset].
+String? _sentenceAround(Comment comment, int offset) {
+  final text = StringBuffer();
+  int? position;
+  for (final token in comment.tokens) {
+    final line = token.lexeme.startsWith('///')
+        ? token.lexeme.substring(3)
+        : token.lexeme;
+    if (offset >= token.offset && offset < token.end) {
+      position =
+          text.length +
+          offset -
+          token.offset -
+          (token.lexeme.length - line.length);
+    }
+    text
+      ..write(line)
+      ..write('\n');
+  }
+  if (position == null) {
+    return null;
+  }
+  final content = text.toString();
+  var start = 0;
+  var end = content.length;
+  for (final match in _sentenceEnd.allMatches(content)) {
+    if (match.end <= position) {
+      start = match.end;
+    } else if (match.start >= position) {
+      end = match.start;
+      break;
+    }
+  }
+  return content.substring(start, end);
 }
 
 bool _hasPrivatePathSegment(String uri) {

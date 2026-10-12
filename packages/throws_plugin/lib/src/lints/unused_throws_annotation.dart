@@ -54,25 +54,32 @@ class UnusedThrowsAnnotationFix extends ResolvedCorrectionProducer {
 
   @override
   CorrectionApplicability get applicability =>
-      CorrectionApplicability.singleLocation;
+      CorrectionApplicability.acrossSingleFile;
+
+  @override
+  FixKind? get multiFixKind => _multiFixKind;
+
+  static const FixKind _multiFixKind = FixKind(
+    'throws.fix.unusedThrowsAnnotation.multi',
+    DartFixKindPriority.inFile,
+    'Remove unused @Throws annotations everywhere in file',
+  );
 
   @override
   FixKind get fixKind => _fixKind;
 
   @override
   Future<void> compute(ChangeBuilder builder) async {
-    try {
-      final annotation = node.findThrowsAnnotation();
-      if (annotation == null) {
-        return;
-      }
-
-      await builder.addDartFileEdit(file, (builder) {
-        builder.addDeletion(range.node(annotation));
-      });
-    } catch (_) {
+    final annotation = node.findThrowsAnnotation();
+    if (annotation == null) {
       return;
     }
+
+    await builder.addDartFileEdit(file, (builder) {
+      builder.addDeletion(
+        range.startStart(annotation, annotation.endToken.next!),
+      );
+    });
   }
 }
 
@@ -83,12 +90,12 @@ class _Visitor extends SimpleAstVisitor<void> {
 
   @override
   void visitCompilationUnit(CompilationUnit node) {
-    final summaries = AnalysisCache.throwsSummaries(node);
+    final analysis = AnalysisCache.analysis(node);
 
-    for (final summary in summaries) {
-      if (summary.hasThrowsAnnotation &&
-          !summary.hasUnhandledThrow &&
-          !summary.hasUnhandledThrowingCall &&
+    for (final summary in analysis.summaries) {
+      if (summary.annotation != null &&
+          summary.sites.isEmpty &&
+          !summary.hasUntrackedThrow &&
           !summary.isAbstractOrExternal) {
         rule.reportAtToken(summary.nameToken);
       }
