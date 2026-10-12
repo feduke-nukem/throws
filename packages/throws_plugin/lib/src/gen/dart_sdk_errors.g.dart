@@ -72,7 +72,6 @@ const Map<String, Map<String, List<String>>> dartSdkErrors = {
     'ArgumentError.checkNotNull': ['ArgumentError'],
     'BigInt.parse': ['FormatException'],
     'DateTime.parse': ['FormatException'],
-    'DateTime.tryParse': ['FormatException'],
     'Duration.~/': ['IntegerDivisionByZeroException'],
     'EnumByName.byName': ['ArgumentError'],
     'Error.throwWithStackTrace': ['Error'],
@@ -97,7 +96,6 @@ const Map<String, Map<String, List<String>>> dartSdkErrors = {
     'Uri.parse': ['FormatException'],
     'Uri.parseIPv4Address': ['FormatException'],
     'Uri.parseIPv6Address': ['FormatException'],
-    'Uri.pathSegments': ['UnsupportedError'],
     'Uri.toFilePath': ['UnsupportedError'],
     'UriData.contentAsBytes': ['FormatException'],
     'UriData.contentAsString': ['UnsupportedError'],
@@ -110,7 +108,6 @@ const Map<String, Map<String, List<String>>> dartSdkErrors = {
     'double.round': ['UnsupportedError'],
     'double.truncate': ['UnsupportedError'],
     'int.parse': ['FormatException'],
-    'int.tryParse': ['FormatException'],
     'num.parse': ['FormatException'],
   },
   'dart:developer': {

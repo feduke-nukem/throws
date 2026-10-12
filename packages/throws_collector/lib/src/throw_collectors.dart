@@ -197,6 +197,11 @@ final _throwWord = RegExp(
   r'\bthrow|\bcomplet\w*\s+(?:the\s+(?:returned\s+)?future\s+)?with|\bfail\w*\s+with',
   caseSensitive: false,
 );
+// "where [parse] would throw", "returns null instead of throwing".
+final _hypothetical = RegExp(
+  r'\bwould\b|\binstead of\b|\brather than\b',
+  caseSensitive: false,
+);
 final _sentenceEnd = RegExp(r'[.!?](?=\s|$)|\n\s*\n');
 
 /// Error classes referenced as `[Name]` in sentences of [comment] that
@@ -204,7 +209,8 @@ final _sentenceEnd = RegExp(r'[.!?](?=\s|$)|\n\s*\n');
 /// future with a [FileSystemException]".
 ///
 /// Only references the analyzer resolves to subtypes of `Error` or
-/// `Exception` count, so names in examples and prose are ignored.
+/// `Exception` count, so names in examples and prose are ignored, and so are
+/// sentences about a throw that does not happen ("where [parse] would throw").
 Set<String> errorsFromComment(Comment comment) {
   final result = <String>{};
   for (final reference in comment.references) {
@@ -214,7 +220,9 @@ Set<String> errorsFromComment(Comment comment) {
       continue;
     }
     final sentence = _sentenceAround(comment, reference.offset);
-    if (sentence != null && _throwWord.hasMatch(sentence)) {
+    if (sentence != null &&
+        _throwWord.hasMatch(sentence) &&
+        !_hypothetical.hasMatch(sentence)) {
       result.add(element.name!);
     }
   }
