@@ -23,3 +23,16 @@ Future<int> sum(List<String> lines) async {
 void printAll(List<String> lines) {
   parseLines(lines).listen(print);
 }
+
+@Throws(errors: {FormatException})
+Future<int> parseLater(String input) async => int.parse(input);
+
+// Started now, awaited later: the try handles it.
+Future<int> startEarly(String input) async {
+  final pending = parseLater(input);
+  try {
+    return await pending;
+  } on FormatException {
+    return 0;
+  }
+}

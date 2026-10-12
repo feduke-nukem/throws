@@ -177,7 +177,11 @@ Errors of a call that returns a `Stream` arrive as error events:
 - getters and methods that return a future (`await s().first`) follow the
   future rules; `yield* s()` forwards them to the caller.
 
-A future or stream stored in a variable and used later is not tracked.
+A future or stream stored in a local variable (`final f = load();`) is
+handled where the variable is read: `await f` inside try/catch,
+`f.catchError(...)`, `await for (x in f)`. Diagnostics point at that read. If no
+read awaits or handles it, or the variable is reassigned or read in a closure,
+the call itself is reported. Fields and other non-local storage are not tracked.
 
 ## Limitations
 

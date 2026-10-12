@@ -399,6 +399,39 @@ int f() => ^boom();
 ''');
   }
 
+  Future<void> test_wraps_await_of_stored_future() async {
+    await assertHasCorrection(
+      r'''import 'package:throws/throws.dart';
+
+@Throws(errors: {FormatException})
+Future<void> boom() async {
+  throw FormatException();
+}
+
+Future<void> f() async {
+  final pending = boom();
+  await ^pending;
+}
+''',
+      r'''import 'package:throws/throws.dart';
+
+@Throws(errors: {FormatException})
+Future<void> boom() async {
+  throw FormatException();
+}
+
+Future<void> f() async {
+  final pending = boom();
+  try {
+    await pending;
+  } on FormatException {
+    // TODO: handle error
+  }
+}
+''',
+    );
+  }
+
   Future<void> test_wraps_statement_inside_closure() async {
     await assertHasCorrection(
       r'''import 'package:throws/throws.dart';

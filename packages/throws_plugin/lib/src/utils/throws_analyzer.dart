@@ -319,7 +319,7 @@ class ThrowsAnalyzer {
         : null;
   }
 
-  ThrowSite? _callSite(
+  List<ThrowSite> _callSites(
     FunctionSummary summary,
     AstNode node,
     Element? element,
@@ -327,25 +327,89 @@ class ThrowsAnalyzer {
   ) {
     final callee = _calleeErrors(summary, element);
     final rethrown = _rethrownErrors(summary, element, call);
-    var errors = rethrown == null
+    final errors = rethrown == null
         ? callee
         : callee?.union(rethrown) ?? rethrown;
     if (errors == null || errors.isEmpty) {
-      return null;
+      return const [];
     }
-    final type = call.staticType;
-    final isAsync =
-        type != null &&
+    if (!_isAsync(call)) {
+      return [?_site(summary, node, errors, isCall: true)];
+    }
+    final unhandled = _withoutAsyncHandled(call, errors);
+    if (unhandled.isEmpty) {
+      return const [];
+    }
+    final atCall = [
+      ?_site(summary, node, unhandled, isCall: true, isAsync: true),
+    ];
+    // A future or stream stored in a local variable is handled where the
+    // variable is read.
+    final reads = _readsOfStored(summary, _chainEnd(call));
+    if (reads == null) {
+      return atCall;
+    }
+    final atReads = [
+      for (final read in reads)
+        if (_withoutAsyncHandled(read, unhandled) case final left
+            when !left.isEmpty)
+          ?_site(summary, read, left, isCall: true, isAsync: true),
+    ];
+    // No read awaits or handles it: report the call, as if it was not stored.
+    final unused =
+        atReads.length == reads.length &&
+        atReads.every(
+          (site) => site.isUnawaitedFuture && site.errors.sameAs(unhandled),
+        );
+    return unused ? atCall : atReads;
+  }
+
+  static bool _isAsync(Expression expression) {
+    final type = expression.staticType;
+    return type != null &&
         (type.isDartAsyncFuture ||
             type.isDartAsyncFutureOr ||
             type.isDartAsyncStream);
-    if (isAsync) {
-      errors = _withoutAsyncHandled(call, errors);
-      if (errors.isEmpty) {
-        return null;
+  }
+
+  /// The outermost method call or getter chained on [expression].
+  static Expression _chainEnd(Expression expression) {
+    while (true) {
+      final parent = expression.parent;
+      if ((parent is MethodInvocation && parent.target == expression) ||
+          (parent is PropertyAccess && parent.target == expression)) {
+        expression = parent as Expression;
+      } else {
+        return expression;
       }
     }
-    return _site(summary, node, errors, isCall: true, isAsync: isAsync);
+  }
+
+  /// Reads of the local variable that [value] initializes; null when [value]
+  /// is not a stored future or stream, or the variable is reassigned or read
+  /// in a nested function.
+  static List<SimpleIdentifier>? _readsOfStored(
+    FunctionSummary summary,
+    Expression value,
+  ) {
+    final declaration = value.parent;
+    if (declaration is! VariableDeclaration || !_isAsync(value)) {
+      return null;
+    }
+    final variable = declaration.declaredFragment?.element;
+    if (variable is! LocalVariableElement) {
+      return null;
+    }
+    final finder = _ReadFinder(variable);
+    summary.body.accept(finder);
+    final reads = finder.reads;
+    if (finder.reassigned ||
+        reads.any(
+          (read) => read.thisOrAncestorOfType<FunctionBody>() != summary.body,
+        )) {
+      return null;
+    }
+    return reads;
   }
 
   /// Removes errors handled by `catchError`, `onError<E>`, `then(onError:)`
@@ -555,7 +619,7 @@ class _SiteCollector extends RecursiveAstVisitor<void> {
 
   /// [node] is reported; [call] is the whole call expression.
   void _call(AstNode node, Element? element, Expression call) {
-    _add(_analyzer._callSite(_summary, node, element, call));
+    sites.addAll(_analyzer._callSites(_summary, node, element, call));
   }
 
   @override
@@ -687,5 +751,29 @@ class _SiteCollector extends RecursiveAstVisitor<void> {
       _call(node, node.element, node);
     }
     super.visitSimpleIdentifier(node);
+  }
+}
+
+/// Reads and writes of one local variable.
+class _ReadFinder extends RecursiveAstVisitor<void> {
+  final LocalVariableElement _variable;
+  final List<SimpleIdentifier> reads = [];
+  bool reassigned = false;
+
+  _ReadFinder(this._variable);
+
+  @override
+  void visitAssignmentExpression(AssignmentExpression node) {
+    if (node.writeElement == _variable) {
+      reassigned = true;
+    }
+    super.visitAssignmentExpression(node);
+  }
+
+  @override
+  void visitSimpleIdentifier(SimpleIdentifier node) {
+    if (node.element == _variable) {
+      reads.add(node);
+    }
   }
 }
