@@ -9,8 +9,8 @@ import 'package:analyzer/dart/element/type.dart';
 import 'package:analyzer/error/error.dart';
 import 'package:analyzer_plugin/utilities/change_builder/change_builder_core.dart';
 import 'package:analyzer_plugin/utilities/fixes/fixes.dart';
-import 'package:throws_plugin/src/data/error_set.dart';
 import 'package:throws_plugin/src/data/throws_annotation.dart';
+import 'package:throws_plugin/src/fixes/catch_clauses.dart';
 import 'package:throws_plugin/src/helpers.dart';
 import 'package:throws_plugin/src/utils/analysis_cache.dart';
 import 'package:throws_plugin/src/utils/extensions/ast_node_x.dart';
@@ -108,15 +108,25 @@ class NotExhaustiveTryCatchFix extends ResolvedCorrectionProducer {
     final lastCatch = tryStatement.catchClauses.last;
     final indent = utils.getLinePrefix(lastCatch.offset);
     await builder.addDartFileEdit(file, (builder) {
-      builder.addInsertion(lastCatch.end, (builder) {
-        for (final type in ErrorSet(missing).sortedTypes) {
-          builder.write(' on ');
-          builder.writeType(type);
-          builder.writeln(' catch (e, stackTrace) {');
-          builder.writeln('$indent  // TODO: handle error');
-          builder.write('$indent}');
+      for (final type in subtypesFirst(missing)) {
+        // A clause for a supertype must come after the new one.
+        final before = clauseCatching(
+          tryStatement,
+          type,
+          analysis.typeSystem,
+        );
+        if (before != null) {
+          builder.addInsertion(before.offset, (builder) {
+            writeCatchClause(builder, type, indent);
+            builder.write(' ');
+          });
+        } else {
+          builder.addInsertion(lastCatch.end, (builder) {
+            builder.write(' ');
+            writeCatchClause(builder, type, indent);
+          });
         }
-      });
+      }
     });
   }
 }
@@ -153,10 +163,8 @@ class NotExhaustiveTryCatchDefaultFix extends ResolvedCorrectionProducer {
     final indent = utils.getLinePrefix(lastCatch.offset);
     await builder.addDartFileEdit(file, (builder) {
       builder.addInsertion(lastCatch.end, (builder) {
-        builder.write(' on Object catch (e, stackTrace) {');
-        builder.writeln();
-        builder.writeln('$indent  // TODO: handle error');
-        builder.write('$indent}');
+        builder.write(' ');
+        writeCatchClause(builder, null, indent);
       });
     });
   }

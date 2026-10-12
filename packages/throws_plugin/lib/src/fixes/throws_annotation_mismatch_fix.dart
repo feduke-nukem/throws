@@ -21,7 +21,16 @@ class ThrowsAnnotationMismatchFix extends ResolvedCorrectionProducer {
 
   @override
   CorrectionApplicability get applicability =>
-      CorrectionApplicability.singleLocation;
+      CorrectionApplicability.acrossSingleFile;
+
+  @override
+  FixKind? get multiFixKind => _multiFixKind;
+
+  static const FixKind _multiFixKind = FixKind(
+    'throws.fix.throwsAnnotationMismatch.multi',
+    DartFixKindPriority.inFile,
+    'Update @Throws annotations everywhere in file',
+  );
 
   @override
   FixKind get fixKind => _fixKind;

@@ -26,19 +26,28 @@ abstract class CorrectionTest extends SingleUnitTest {
     );
   }
 
-  /// Code after applying the correction, or null when it makes no edits.
+  /// Code after applying the correction at every `^` marker, or null when
+  /// it makes no edits. Several markers emulate "fix all in file".
   Future<String?> _apply(String code) async {
     addTestSource(code);
     final unit = await getResolvedUnit(testFile);
-    final producer = generator(
-      context: CorrectionProducerContext.createResolved(
-        libraryResult: testLibraryResult!,
-        unitResult: unit,
-        selectionOffset: parsedTestCode.position.offset,
-      ),
-    );
+    final positions = parsedTestCode.positions;
     final builder = ChangeBuilder(session: unit.session);
-    await producer.compute(builder);
+    for (final position in positions) {
+      final producer = generator(
+        context: CorrectionProducerContext.createResolved(
+          libraryResult: testLibraryResult!,
+          unitResult: unit,
+          applyingBulkFixes: positions.length > 1,
+          selectionOffset: position.offset,
+        ),
+      );
+      if (positions.length > 1) {
+        expect(producer.canBeAppliedAcrossSingleFile, isTrue);
+        expect(producer.multiFixKind, isNotNull);
+      }
+      await producer.compute(builder);
+    }
     final edits = builder.sourceChange.getFileEdit(testFile.path)?.edits;
     return edits == null ? null : SourceEdit.applySequence(testCode, edits);
   }

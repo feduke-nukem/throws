@@ -35,9 +35,26 @@ Diagnostics are reported at the call site for unhandled throws.
 
 ## Assists and fixes
 
-- Add @Throws or @throws annotations
-- Wrap in try/catch with inferred errors
-- Fixes for mismatch or missing annotations
+Assists:
+- Add `@Throws()` or `@throws` to a function.
+
+Fixes:
+- `missing_throws_annotation`: add `@Throws` with the inferred errors.
+- `throws_annotation_mismatch`: update `@Throws` errors.
+- `unused_throws_annotation`: remove the annotation.
+- `no_try_catch`:
+  - wrap the statement in try/catch, with a clause per error or one `on Object`
+    clause (`final x = call();` becomes `late final T x; try { x = call(); }`);
+  - add `await` to a future-returning call inside try/catch;
+  - add the errors to the enclosing `@Throws`, or annotate the enclosing
+    function.
+- `not_exhaustive_try_catch`: add the missing catch clauses (subtypes before
+  supertypes), a default `on Object` clause, or add the errors to `@Throws`.
+
+The annotation fixes for `missing_throws_annotation`,
+`throws_annotation_mismatch` and `unused_throws_annotation` can be applied to
+every diagnostic in a file at once ("fix all in file" in the IDE). `dart fix`
+does not apply analyzer plugin fixes.
 
 ## throws.yaml
 

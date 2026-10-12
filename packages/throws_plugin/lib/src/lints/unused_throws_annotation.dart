@@ -54,7 +54,16 @@ class UnusedThrowsAnnotationFix extends ResolvedCorrectionProducer {
 
   @override
   CorrectionApplicability get applicability =>
-      CorrectionApplicability.singleLocation;
+      CorrectionApplicability.acrossSingleFile;
+
+  @override
+  FixKind? get multiFixKind => _multiFixKind;
+
+  static const FixKind _multiFixKind = FixKind(
+    'throws.fix.unusedThrowsAnnotation.multi',
+    DartFixKindPriority.inFile,
+    'Remove unused @Throws annotations everywhere in file',
+  );
 
   @override
   FixKind get fixKind => _fixKind;

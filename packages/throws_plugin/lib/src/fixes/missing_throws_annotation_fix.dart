@@ -18,7 +18,16 @@ class MissingThrowsAnnotationFix extends ResolvedCorrectionProducer {
 
   @override
   CorrectionApplicability get applicability =>
-      CorrectionApplicability.singleLocation;
+      CorrectionApplicability.acrossSingleFile;
+
+  @override
+  FixKind? get multiFixKind => _multiFixKind;
+
+  static const FixKind _multiFixKind = FixKind(
+    'throws.fix.missingThrowsAnnotation.multi',
+    DartFixKindPriority.inFile,
+    'Add @Throws annotations everywhere in file',
+  );
 
   @override
   FixKind get fixKind => _fixKind;
@@ -55,4 +64,18 @@ class MissingThrowsAnnotationFix extends ResolvedCorrectionProducer {
       });
     });
   }
+}
+
+/// [MissingThrowsAnnotationFix] offered on a throwing call: annotates the
+/// calling function. One location at a time, since several calls in one
+/// function would annotate it repeatedly.
+class AnnotateCallerFix extends MissingThrowsAnnotationFix {
+  AnnotateCallerFix({required super.context});
+
+  @override
+  CorrectionApplicability get applicability =>
+      CorrectionApplicability.singleLocation;
+
+  @override
+  FixKind? get multiFixKind => null;
 }

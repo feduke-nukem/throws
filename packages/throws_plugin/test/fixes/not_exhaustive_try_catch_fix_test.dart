@@ -46,7 +46,7 @@ void f() {
     boom();
   } on FormatException {
     // handle
-  } on ArgumentError catch (e, stackTrace) {
+  } on ArgumentError {
     // TODO: handle error
   }
 }
@@ -72,6 +72,47 @@ void f() {
   }
 }
 ''');
+  }
+
+  Future<void> test_inserts_before_rethrowing_supertype_clause() async {
+    await assertHasCorrection(
+      r'''import 'package:throws/throws.dart';
+
+@Throws(errors: {FormatException, ArgumentError})
+int boom() {
+  throw FormatException();
+}
+
+void f() {
+  try {
+    ^boom();
+  } on ArgumentError {
+    // handle
+  } on Exception {
+    rethrow;
+  }
+}
+''',
+      r'''import 'package:throws/throws.dart';
+
+@Throws(errors: {FormatException, ArgumentError})
+int boom() {
+  throw FormatException();
+}
+
+void f() {
+  try {
+    boom();
+  } on ArgumentError {
+    // handle
+  } on FormatException {
+    // TODO: handle error
+  } on Exception {
+    rethrow;
+  }
+}
+''',
+    );
   }
 }
 
@@ -109,7 +150,7 @@ void f() {
     boom();
   } on FormatException {
     // handle
-  } on Object catch (e, stackTrace) {
+  } on Object {
     // TODO: handle error
   }
 }

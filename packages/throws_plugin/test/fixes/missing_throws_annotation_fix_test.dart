@@ -1,5 +1,7 @@
 // ignore_for_file: non_constant_identifier_names
 
+import 'package:analysis_server_plugin/edit/dart/correction_producer.dart';
+import 'package:test/test.dart';
 import 'package:test_reflective_loader/test_reflective_loader.dart';
 import 'package:throws_plugin/src/fixes/missing_throws_annotation_fix.dart';
 
@@ -8,6 +10,7 @@ import '../correction_test_base.dart';
 void main() {
   defineReflectiveSuite(() {
     defineReflectiveTests(MissingThrowsAnnotationFixTest);
+    defineReflectiveTests(AnnotateCallerFixTest);
   });
 }
 
@@ -120,5 +123,76 @@ void ^f() {
     await assertNoCorrection(r'''
 void ^f() {}
 ''');
+  }
+
+  Future<void> test_fixes_all_in_file() async {
+    await assertHasCorrection(
+      r'''
+void /*0*/a() {
+  throw FormatException();
+}
+
+void /*1*/b() {
+  throw ArgumentError();
+}
+''',
+      r'''
+import 'package:throws/throws.dart';
+
+@Throws(reason: 'reason', errors: {FormatException})
+void a() {
+  throw FormatException();
+}
+
+@Throws(reason: 'reason', errors: {ArgumentError})
+void b() {
+  throw ArgumentError();
+}
+''',
+    );
+  }
+}
+
+@reflectiveTest
+class AnnotateCallerFixTest extends CorrectionTest {
+  @override
+  ProducerGenerator get generator => AnnotateCallerFix.new;
+
+  Future<void> test_annotates_calling_function() async {
+    await assertHasCorrection(
+      r'''
+import 'package:throws/throws.dart';
+
+@Throws(errors: {FormatException})
+void boom() {
+  throw FormatException();
+}
+
+void f() {
+  ^boom();
+}
+''',
+      r'''
+import 'package:throws/throws.dart';
+
+@Throws(errors: {FormatException})
+void boom() {
+  throw FormatException();
+}
+
+@Throws(reason: 'reason', errors: {FormatException})
+void f() {
+  boom();
+}
+''',
+    );
+  }
+
+  Future<void> test_is_single_location() async {
+    await assertNoCorrection(r'''
+void ^f() {}
+''');
+    final producer = generator(context: StubCorrectionProducerContext.instance);
+    expect(producer.canBeAppliedAcrossSingleFile, isFalse);
   }
 }

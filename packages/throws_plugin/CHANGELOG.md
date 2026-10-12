@@ -12,6 +12,12 @@
 - Future-returning calls: try/catch counts only with `await`; `catchError`,
   `onError<E>`, `then(onError:)` and `ignore` handle errors.
 - Quick fixes import the error types they insert; they no longer hide their own errors.
+- New fixes: add `await` to a future call in try/catch; add errors to the
+  enclosing `@Throws`.
+- Annotation fixes apply to all diagnostics in a file at once.
+- Wrapping `final x = call();` keeps `x` in scope (`late final`).
+- Missing catch clauses are inserted before clauses for their supertypes.
+- Generated catch clauses have no unused `e`/`stackTrace` variables.
 - Removing an unused annotation no longer leaves an empty line.
 - Require analyzer ^14.5.0 and Dart ^3.11.0.
 - Regenerate prebuilt dart/flutter maps without names from doc examples and prose.

@@ -43,4 +43,25 @@ int ^f() {
 }
 ''');
   }
+
+  Future<void> test_fixes_all_in_file() async {
+    await assertHasCorrection(
+      r'''
+import 'package:throws/throws.dart';
+
+@throws
+int /*0*/a() => 1;
+
+@Throws(reason: 'r')
+int /*1*/b() => 2;
+''',
+      r'''
+import 'package:throws/throws.dart';
+
+int a() => 1;
+
+int b() => 2;
+''',
+    );
+  }
 }

@@ -5,12 +5,15 @@ import 'package:analyzer/analysis_rule/rule_context.dart';
 import 'package:analyzer/analysis_rule/rule_visitor_registry.dart';
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
+import 'package:analyzer/dart/element/type.dart';
 import 'package:analyzer/error/error.dart';
+import 'package:analyzer_plugin/utilities/change_builder/change_builder_dart.dart';
 import 'package:analyzer_plugin/utilities/change_builder/change_builder_core.dart';
 import 'package:analyzer_plugin/utilities/fixes/fixes.dart';
 import 'package:analyzer_plugin/utilities/range_factory.dart';
 import 'package:throws_plugin/src/data/error_set.dart';
 import 'package:throws_plugin/src/data/throws_annotation.dart';
+import 'package:throws_plugin/src/fixes/catch_clauses.dart';
 import 'package:throws_plugin/src/utils/analysis_cache.dart';
 import 'package:throws_plugin/src/utils/extensions/ast_node_x.dart';
 import 'package:throws_plugin/src/utils/extensions/statement_x.dart';
@@ -66,7 +69,81 @@ class _Visitor extends SimpleAstVisitor<void> {
   }
 }
 
-class NoTryCatchFix extends ResolvedCorrectionProducer {
+/// Wraps the statement with the throwing call in try/catch.
+abstract class _WrapInTryFix extends ResolvedCorrectionProducer {
+  _WrapInTryFix({required super.context});
+
+  @override
+  CorrectionApplicability get applicability =>
+      CorrectionApplicability.singleLocation;
+
+  /// Types to catch; `null` entries write `on Object`.
+  List<DartType?> clauseTypes(ErrorSet errors);
+
+  @override
+  Future<void> compute(ChangeBuilder builder) async {
+    final statement = _wrappableStatement(node);
+    if (statement == null) {
+      return;
+    }
+    final errors = _uncoveredErrors(unit, statement);
+    if (errors.isEmpty) {
+      return;
+    }
+
+    final replacementRange = utils.getLinesRange(range.node(statement));
+    final indent = utils.getLinePrefix(replacementRange.offset);
+    await builder.addDartFileEdit(file, (builder) {
+      builder.addReplacement(replacementRange, (builder) {
+        final body = switch (statement) {
+          VariableDeclarationStatement(:final variables) =>
+            _writeLateDeclaration(
+              builder,
+              variables,
+              indent,
+            ),
+          _ => utils.getNodeText(statement),
+        };
+        builder.writeln('${indent}try {');
+        builder.writeln('$indent  $body');
+        builder.write('$indent}');
+        for (final type in clauseTypes(errors)) {
+          builder.write(' ');
+          writeCatchClause(builder, type, indent);
+        }
+        builder.writeln();
+      });
+    });
+  }
+
+  /// Declares `late` the variable of `final x = call();` before the try, so
+  /// it stays in scope; returns the assignment for the try body.
+  String _writeLateDeclaration(
+    DartEditBuilder builder,
+    VariableDeclarationList variables,
+    String indent,
+  ) {
+    final variable = variables.variables.single;
+    builder.write('${indent}late ');
+    if (variables.isFinal) {
+      builder.write('final ');
+    }
+    final type = variables.type;
+    if (type != null) {
+      builder.write(utils.getNodeText(type));
+    } else {
+      builder.writeType(
+        variable.declaredFragment?.element.type,
+        shouldWriteDynamic: true,
+      );
+    }
+    builder.writeln(' ${variable.name.lexeme};');
+    return '${variable.name.lexeme} = '
+        '${utils.getNodeText(variable.initializer!)};';
+  }
+}
+
+class NoTryCatchFix extends _WrapInTryFix {
   static const FixKind _fixKind = FixKind(
     'throws.fix.noTryCatch',
     DartFixKindPriority.standard,
@@ -76,51 +153,14 @@ class NoTryCatchFix extends ResolvedCorrectionProducer {
   NoTryCatchFix({required super.context});
 
   @override
-  CorrectionApplicability get applicability =>
-      CorrectionApplicability.singleLocation;
-
-  @override
   FixKind get fixKind => _fixKind;
 
   @override
-  Future<void> compute(ChangeBuilder builder) async {
-    final statement = _wrappableStatement(node);
-    if (statement == null) {
-      return;
-    }
-
-    final errors = _uncoveredErrors(unit, statement);
-    if (errors.isEmpty) {
-      return;
-    }
-
-    final replacementRange = utils.getLinesRange(range.node(statement));
-    final indent = utils.getLinePrefix(replacementRange.offset);
-    final types = errors.sortedTypes;
-    await builder.addDartFileEdit(file, (builder) {
-      builder.addReplacement(replacementRange, (builder) {
-        builder.writeln('${indent}try {');
-        builder.writeln('$indent  ${statement.toSource().trim()}');
-        builder.write('$indent}');
-        if (types.isEmpty) {
-          builder.writeln(' on Object catch (e, stackTrace) {');
-          builder.writeln('$indent  // TODO: handle error');
-          builder.write('$indent}');
-        }
-        for (final type in types) {
-          builder.write(' on ');
-          builder.writeType(type);
-          builder.writeln(' catch (e, stackTrace) {');
-          builder.writeln('$indent  // TODO: handle error');
-          builder.write('$indent}');
-        }
-        builder.writeln();
-      });
-    });
-  }
+  List<DartType?> clauseTypes(ErrorSet errors) =>
+      errors.types.isEmpty ? const [null] : subtypesFirst(errors.types);
 }
 
-class NoTryCatchWithDefaultFix extends ResolvedCorrectionProducer {
+class NoTryCatchWithDefaultFix extends _WrapInTryFix {
   static const FixKind _fixKind = FixKind(
     'throws.fix.noTryCatchDefault',
     DartFixKindPriority.standard,
@@ -130,31 +170,10 @@ class NoTryCatchWithDefaultFix extends ResolvedCorrectionProducer {
   NoTryCatchWithDefaultFix({required super.context});
 
   @override
-  CorrectionApplicability get applicability =>
-      CorrectionApplicability.singleLocation;
-
-  @override
   FixKind get fixKind => _fixKind;
 
   @override
-  Future<void> compute(ChangeBuilder builder) async {
-    final statement = _wrappableStatement(node);
-    if (statement == null || _uncoveredErrors(unit, statement).isEmpty) {
-      return;
-    }
-
-    final replacementRange = utils.getLinesRange(range.node(statement));
-    final indent = utils.getLinePrefix(replacementRange.offset);
-    await builder.addDartFileEdit(file, (builder) {
-      builder.addReplacement(replacementRange, (builder) {
-        builder.writeln('${indent}try {');
-        builder.writeln('$indent  ${statement.toSource().trim()}');
-        builder.writeln('$indent} on Object catch (e, stackTrace) {');
-        builder.writeln('$indent  // TODO: handle error');
-        builder.writeln('$indent}');
-      });
-    });
-  }
+  List<DartType?> clauseTypes(ErrorSet errors) => const [null];
 }
 
 /// Statement around [node] that a try/catch can wrap.

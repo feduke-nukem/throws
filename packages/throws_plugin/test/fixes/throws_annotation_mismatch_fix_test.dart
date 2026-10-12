@@ -96,4 +96,35 @@ void ^f() {
 }
 ''');
   }
+
+  Future<void> test_fixes_all_in_file() async {
+    await assertHasCorrection(
+      r'''
+import 'package:throws/throws.dart';
+
+@Throws(errors: {ArgumentError})
+void /*0*/a() {
+  throw FormatException();
+}
+
+@Throws(errors: {FormatException})
+void /*1*/b() {
+  throw ArgumentError();
+}
+''',
+      r'''
+import 'package:throws/throws.dart';
+
+@Throws(errors: {FormatException})
+void a() {
+  throw FormatException();
+}
+
+@Throws(errors: {ArgumentError})
+void b() {
+  throw ArgumentError();
+}
+''',
+    );
+  }
 }

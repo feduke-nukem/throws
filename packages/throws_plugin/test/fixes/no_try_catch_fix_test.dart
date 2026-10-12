@@ -40,9 +40,9 @@ void boom() {
 void f() {
   try {
     boom();
-  } on ArgumentError catch (e, stackTrace) {
+  } on ArgumentError {
     // TODO: handle error
-  } on FormatException catch (e, stackTrace) {
+  } on FormatException {
     // TODO: handle error
   }
 }
@@ -75,7 +75,7 @@ void boom() {
 void f() {
   try {
     boom();
-  } on ArgumentError catch (e, stackTrace) {
+  } on ArgumentError {
     // TODO: handle error
   }
 }
@@ -104,7 +104,7 @@ void boom() {}
 void f() {
   try {
     boom();
-  } on Object catch (e, stackTrace) {
+  } on Object {
     // TODO: handle error
   }
 }
@@ -152,7 +152,7 @@ Future<void> boom() async {
 Future<void> f() async {
   try {
     await boom();
-  } on FormatException catch (e, stackTrace) {
+  } on FormatException {
     // TODO: handle error
   }
 }
@@ -190,6 +190,117 @@ void f() {
 }
 ''');
   }
+
+  Future<void> test_keeps_final_variable_in_scope() async {
+    await assertHasCorrection(
+      r'''import 'package:throws/throws.dart';
+
+@Throws(errors: {FormatException, ArgumentError})
+int boom() {
+  throw FormatException();
+}
+
+void f() {
+  final value = ^boom();
+  print(value);
+}
+''',
+      r'''import 'package:throws/throws.dart';
+
+@Throws(errors: {FormatException, ArgumentError})
+int boom() {
+  throw FormatException();
+}
+
+void f() {
+  late final int value;
+  try {
+    value = boom();
+  } on ArgumentError {
+    // TODO: handle error
+  } on FormatException {
+    // TODO: handle error
+  }
+  print(value);
+}
+''',
+    );
+  }
+
+  Future<void> test_keeps_typed_var_variable_in_scope() async {
+    await assertHasCorrection(
+      r'''import 'package:throws/throws.dart';
+
+@Throws(errors: {FormatException, ArgumentError})
+int boom() {
+  throw FormatException();
+}
+
+void f() {
+  num value = ^boom();
+  print(value);
+}
+''',
+      r'''import 'package:throws/throws.dart';
+
+@Throws(errors: {FormatException, ArgumentError})
+int boom() {
+  throw FormatException();
+}
+
+void f() {
+  late num value;
+  try {
+    value = boom();
+  } on ArgumentError {
+    // TODO: handle error
+  } on FormatException {
+    // TODO: handle error
+  }
+  print(value);
+}
+''',
+    );
+  }
+
+  Future<void> test_orders_subtypes_first() async {
+    await assertHasCorrection(
+      r'''
+import 'package:throws/throws.dart';
+
+class MyException implements Exception {}
+
+@Throws(errors: {Exception, MyException})
+void boom() {
+  throw MyException();
+}
+
+void f() {
+  ^boom();
+}
+''',
+      r'''
+import 'package:throws/throws.dart';
+
+class MyException implements Exception {}
+
+@Throws(errors: {Exception, MyException})
+void boom() {
+  throw MyException();
+}
+
+void f() {
+  try {
+    boom();
+  } on MyException {
+    // TODO: handle error
+  } on Exception {
+    // TODO: handle error
+  }
+}
+''',
+    );
+  }
 }
 
 @reflectiveTest
@@ -220,7 +331,7 @@ void boom() {
 void f() {
   try {
     boom();
-  } on Object catch (e, stackTrace) {
+  } on Object {
     // TODO: handle error
   }
 }
