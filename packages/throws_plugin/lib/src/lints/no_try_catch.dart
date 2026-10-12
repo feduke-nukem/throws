@@ -187,6 +187,10 @@ ErrorSet _uncoveredErrors(CompilationUnit unit, Statement statement) {
   }
   var errors = ErrorSet.empty;
   for (final site in summary.sitesWithin(statement)) {
+    // Wrapping an unawaited future in try/catch would not handle its errors.
+    if (site.isUnawaitedFuture) {
+      return ErrorSet.empty;
+    }
     if (site.isCall) {
       errors = errors.union(summary.uncovered(site, analysis.typeSystem));
     }

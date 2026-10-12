@@ -193,6 +193,7 @@ class ThrowsAnalyzer {
     FunctionSummary summary,
     AstNode node,
     Element? element,
+    Expression call,
   ) {
     var errors = _declaredErrors(element);
     if (errors != null) {
@@ -210,8 +211,51 @@ class ThrowsAnalyzer {
     if (errors == null || errors.isEmpty) {
       return null;
     }
-    return _site(summary, node, errors, isCall: true);
+    final type = call.staticType;
+    final isFuture =
+        type != null && (type.isDartAsyncFuture || type.isDartAsyncFutureOr);
+    if (isFuture) {
+      errors = _withoutFutureHandled(call, errors);
+      if (errors.isEmpty) {
+        return null;
+      }
+    }
+    return _site(summary, node, errors, isCall: true, isFuture: isFuture);
   }
+
+  /// Removes errors handled by `catchError`, `onError<E>`, `then(onError:)`
+  /// or `ignore` chained on the future returned by [call].
+  ErrorSet _withoutFutureHandled(Expression call, ErrorSet errors) {
+    final objectType = _library.typeProvider.objectType;
+    final types = {...errors.types};
+    Expression future = call;
+    while (true) {
+      final chained = future.parent;
+      if (chained is! MethodInvocation || chained.target != future) {
+        break;
+      }
+      future = chained;
+      final handled = switch (chained.methodName.name) {
+        'catchError' || 'ignore' => objectType,
+        'onError' => chained.typeArgumentTypes?.firstOrNull ?? objectType,
+        'then' when _hasNamedArgument(chained, 'onError') => objectType,
+        _ => null,
+      };
+      if (handled == null) {
+        continue;
+      }
+      if (handled.isDartCoreObject) {
+        return ErrorSet.empty;
+      }
+      types.removeWhere((type) => _typeSystem.isSubtypeOf(type, handled));
+    }
+    return ErrorSet(types, unknown: errors.unknown);
+  }
+
+  static bool _hasNamedArgument(MethodInvocation node, String name) =>
+      node.argumentList.arguments.any(
+        (argument) => argument is NamedArgument && argument.name.lexeme == name,
+      );
 
   /// Applies try/catch statements around [node] within the function body.
   ThrowSite? _site(
@@ -219,17 +263,24 @@ class ThrowsAnalyzer {
     AstNode node,
     ErrorSet errors, {
     required bool isCall,
+    bool isFuture = false,
   }) {
     final types = {...errors.types};
     var unknown = errors.unknown;
     var inTryWithCatch = false;
+    // Errors of a future reach a try only through `await`.
+    var awaited = !isFuture;
 
     for (
       AstNode? current = node.parent;
       current != null && current != summary.body;
       current = current.parent
     ) {
-      if (current is! TryStatement ||
+      if (current is AwaitExpression) {
+        awaited = true;
+      }
+      if (!awaited ||
+          current is! TryStatement ||
           current.catchClauses.isEmpty ||
           node.offset < current.body.offset ||
           node.end > current.body.end) {
@@ -257,6 +308,7 @@ class ThrowsAnalyzer {
       isCall: isCall,
       errors: ErrorSet(types, unknown: unknown),
       inTryWithCatch: inTryWithCatch,
+      isUnawaitedFuture: !awaited,
     );
   }
 }
@@ -342,8 +394,9 @@ class _SiteCollector extends RecursiveAstVisitor<void> {
     }
   }
 
-  void _call(AstNode node, Element? element) {
-    _add(_analyzer._callSite(_summary, node, element));
+  /// [node] is reported; [call] is the whole call expression.
+  void _call(AstNode node, Element? element, Expression call) {
+    _add(_analyzer._callSite(_summary, node, element, call));
   }
 
   @override
@@ -388,20 +441,20 @@ class _SiteCollector extends RecursiveAstVisitor<void> {
         ),
       );
     } else {
-      _call(node.methodName, node.methodName.element);
+      _call(node.methodName, node.methodName.element, node);
     }
     super.visitMethodInvocation(node);
   }
 
   @override
   void visitFunctionExpressionInvocation(FunctionExpressionInvocation node) {
-    _call(node, node.element);
+    _call(node, node.element, node);
     super.visitFunctionExpressionInvocation(node);
   }
 
   @override
   void visitInstanceCreationExpression(InstanceCreationExpression node) {
-    _call(node.constructorName, node.constructorName.element);
+    _call(node.constructorName, node.constructorName.element, node);
     super.visitInstanceCreationExpression(node);
   }
 
@@ -410,7 +463,7 @@ class _SiteCollector extends RecursiveAstVisitor<void> {
   void visitPropertyAccess(PropertyAccess node) {
     final element = node.propertyName.element;
     if (element is PropertyAccessorElement) {
-      _call(node.propertyName, element);
+      _call(node.propertyName, element, node);
     }
     super.visitPropertyAccess(node);
   }
@@ -419,7 +472,7 @@ class _SiteCollector extends RecursiveAstVisitor<void> {
   void visitPrefixedIdentifier(PrefixedIdentifier node) {
     final element = node.identifier.element;
     if (element is PropertyAccessorElement) {
-      _call(node.identifier, element);
+      _call(node.identifier, element, node);
     }
     super.visitPrefixedIdentifier(node);
   }
@@ -435,7 +488,7 @@ class _SiteCollector extends RecursiveAstVisitor<void> {
     if (!handledByParent &&
         node.element is GetterElement &&
         !node.inDeclarationContext()) {
-      _call(node, node.element);
+      _call(node, node.element, node);
     }
     super.visitSimpleIdentifier(node);
   }

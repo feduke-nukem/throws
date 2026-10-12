@@ -95,6 +95,16 @@ thrown `FormatException`. Names from throws.yaml and prebuilt maps are resolved
 in the scope of the library that declares the member; unresolved names count as
 an unknown error, which any catch clause handles.
 
+## Futures
+
+Errors of a call that returns a `Future` arrive asynchronously:
+- a surrounding try/catch handles them only if the call is awaited
+  (`await f()`, `await Future.wait([f()])`);
+- `.catchError`, `.ignore()` and `.then(..., onError: ...)` handle all of them,
+  `.onError<E>` handles subtypes of `E`.
+
+A future stored in a variable and awaited later is not tracked.
+
 ## Limitations
 
 - Analysis is best-effort and depends on available type information.

@@ -112,6 +112,54 @@ void f() {
     );
   }
 
+  Future<void> test_no_fix_for_unawaited_future() async {
+    await assertNoCorrection(r'''
+import 'package:throws/throws.dart';
+
+@Throws(errors: {FormatException})
+Future<void> boom() async {
+  throw FormatException();
+}
+
+void f() {
+  ^boom();
+}
+''');
+  }
+
+  Future<void> test_wraps_awaited_future() async {
+    await assertHasCorrection(
+      r'''
+import 'package:throws/throws.dart';
+
+@Throws(errors: {FormatException})
+Future<void> boom() async {
+  throw FormatException();
+}
+
+Future<void> f() async {
+  await ^boom();
+}
+''',
+      r'''
+import 'package:throws/throws.dart';
+
+@Throws(errors: {FormatException})
+Future<void> boom() async {
+  throw FormatException();
+}
+
+Future<void> f() async {
+  try {
+    await boom();
+  } on FormatException catch (e, stackTrace) {
+    // TODO: handle error
+  }
+}
+''',
+    );
+  }
+
   Future<void> test_no_fix_inside_try() async {
     await assertNoCorrection(r'''import 'package:throws/throws.dart';
 

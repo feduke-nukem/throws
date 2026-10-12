@@ -622,4 +622,91 @@ void f() {
 }''',
     );
   }
+
+  void test_reports_unawaited_future_in_try() async {
+    const code = '''$_asyncBoom
+Future<void> f() async {
+  try {
+    asyncBoom();
+  } catch (_) {
+    // handle
+  }
+}''';
+    await assertDiagnostics(code, [lint(code.lastIndexOf('asyncBoom'), 9)]);
+  }
+
+  void test_no_lint_for_awaited_future_in_try() async {
+    await assertNoDiagnostics('''$_asyncBoom
+Future<void> f() async {
+  try {
+    await asyncBoom();
+  } on FormatException {
+    // handle
+  }
+}''');
+  }
+
+  void test_no_lint_for_future_awaited_inside_wait() async {
+    await assertNoDiagnostics('''$_asyncBoom
+Future<void> f() async {
+  try {
+    await Future.wait([asyncBoom()]);
+  } catch (_) {
+    // handle
+  }
+}''');
+  }
+
+  void test_no_lint_when_catch_error_chained() async {
+    await assertNoDiagnostics('''$_asyncBoom
+void f() {
+  asyncBoom().whenComplete(() {}).catchError((Object _) {});
+}''');
+  }
+
+  void test_no_lint_when_then_has_on_error() async {
+    await assertNoDiagnostics('''$_asyncBoom
+void f() {
+  asyncBoom().then((_) {}, onError: (Object _) {});
+}''');
+  }
+
+  void test_reports_when_then_has_no_on_error() async {
+    const code = '''$_asyncBoom
+void f() {
+  asyncBoom().then((_) {});
+}''';
+    await assertDiagnostics(code, [lint(code.lastIndexOf('asyncBoom'), 9)]);
+  }
+
+  void test_on_error_handles_its_type_only() async {
+    const code = '''$_asyncBoom$_onErrorStub
+@Throws(errors: {FormatException, ArgumentError})
+Future<void> twoErrors() async {
+  throw FormatException();
 }
+
+void f() {
+  asyncBoom().onError<FormatException>((_, _) {});
+  twoErrors().onError<FormatException>((_, _) {});
+}''';
+    await assertDiagnostics(code, [lint(code.lastIndexOf('twoErrors'), 9)]);
+  }
+}
+
+const _asyncBoom = r'''import 'package:throws/throws.dart';
+
+@Throws(errors: {FormatException})
+Future<void> asyncBoom() async {
+  throw FormatException();
+}
+''';
+
+/// The mock SDK has no `Future.onError`; mirror its signature.
+const _onErrorStub = r'''
+extension FutureOnError<T> on Future<T> {
+  Future<T> onError<E extends Object>(
+    void Function(E error, StackTrace stackTrace) handleError,
+  ) => this;
+}
+''';

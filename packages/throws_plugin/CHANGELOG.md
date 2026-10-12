@@ -8,6 +8,8 @@
 - Report getters read through implicit `this`; ignore method tear-offs.
 - Recognize only `@Throws`/`@throws` from package:throws.
 - Read throws.yaml through the analyzer file system; it is re-read on the next analysis session.
+- Future-returning calls: try/catch counts only with `await`; `catchError`,
+  `onError<E>`, `then(onError:)` and `ignore` handle errors.
 - Quick fixes import the error types they insert.
 - Removing an unused annotation no longer leaves an empty line.
 - Require analyzer ^14.5.0 and Dart ^3.11.0.
