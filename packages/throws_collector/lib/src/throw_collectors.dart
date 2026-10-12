@@ -4,6 +4,8 @@ import 'package:analyzer/dart/ast/visitor.dart';
 
 class DeclarationCollector extends RecursiveAstVisitor<void> {
   final String uri;
+
+  /// Errors per member path (`Class.member`, `Class.new` or `function`).
   final Map<String, Set<String>> entries = {};
   final List<String> _classStack = [];
 
@@ -54,10 +56,11 @@ class DeclarationCollector extends RecursiveAstVisitor<void> {
 
   @override
   void visitConstructorDeclaration(ConstructorDeclaration node) {
-    // ignore: deprecated_member_use
-    final typeName = node.typeName?.name ?? node.returnType.name;
-    final ctorName = node.name?.lexeme;
-    final name = ctorName == null ? typeName : '$typeName.$ctorName';
+    final typeName = node.declaredFragment?.element.enclosingElement.name;
+    if (typeName == null) {
+      return;
+    }
+    final name = node.name?.lexeme ?? 'new';
     final errors = _collectErrors(node.body, parent: node);
     _maybeAdd(name, errors, selfType: typeName, allowObjectFallback: false);
   }
@@ -95,10 +98,9 @@ class DeclarationCollector extends RecursiveAstVisitor<void> {
 
   String _buildKey(String memberName) {
     if (_classStack.isEmpty) {
-      return '$uri.$memberName';
+      return memberName;
     }
-    final className = _classStack.join('.');
-    return '$uri.$className.$memberName';
+    return '${_classStack.join('.')}.$memberName';
   }
 
   bool _isPrivateEntry(String memberName) {
@@ -180,10 +182,6 @@ String? typeNameFromExpression(Expression expression) {
       return constructorName.type.name.lexeme;
     case TypeLiteral(:final type):
       return type.toSource();
-    case SimpleIdentifier(:final name):
-      return name;
-    case PrefixedIdentifier(:final identifier):
-      return identifier.name;
   }
 
   final typeName = expression.staticType?.getDisplayString();

@@ -69,13 +69,14 @@ class PackageInputSource extends InputSource {
   const PackageInputSource({required this.name, required this.version});
 }
 
-CollectorConfig parseArgs(List<String> args) {
+CollectorConfig parseArgs(List<String> args, {String? workingDirectory}) {
   final parser = _buildParser();
   final results = parser.parse(args);
   final showHelp = results['help'] as bool;
 
-  final packageRoot = _findPackageRoot(Directory.current.path);
-  final resolvedRoot = packageRoot ?? Directory.current.path;
+  final cwd = workingDirectory ?? Directory.current.path;
+  final packageRoot = _findPackageRoot(cwd);
+  final resolvedRoot = packageRoot ?? cwd;
   final configDoc = packageRoot == null ? null : _loadConfigDoc(packageRoot);
   final outputDir = _readOutputDir(configDoc, resolvedRoot);
 

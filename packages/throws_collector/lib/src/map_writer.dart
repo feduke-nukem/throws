@@ -3,17 +3,19 @@ import 'dart:io';
 
 import 'options.dart';
 
+/// Writes errors per library URI, then per member path, in the schema read by
+/// throws_plugin (`members` in throws.yaml and `include` files).
 Future<void> writeMap(
-  Map<String, Set<String>> entries,
+  Map<String, Map<String, Set<String>>> entries,
   String outPath,
   String mapName,
   OutputFormat format,
 ) async {
-  final sortedKeys = entries.keys.toList()..sort();
+  final sorted = _sorted(entries);
   final content = switch (format) {
-    OutputFormat.dart => _writeDart(sortedKeys, entries, mapName),
-    OutputFormat.json => _writeJson(sortedKeys, entries),
-    OutputFormat.yaml => _writeYaml(sortedKeys, entries),
+    OutputFormat.dart => _writeDart(sorted, mapName),
+    OutputFormat.json => const JsonEncoder.withIndent('  ').convert(sorted),
+    OutputFormat.yaml => _writeYaml(sorted),
   };
 
   final outFile = File(outPath);
@@ -21,53 +23,46 @@ Future<void> writeMap(
   outFile.writeAsStringSync(content);
 }
 
-String _writeDart(
-  List<String> sortedKeys,
-  Map<String, Set<String>> entries,
-  String mapName,
+Map<String, Map<String, List<String>>> _sorted(
+  Map<String, Map<String, Set<String>>> entries,
 ) {
-  final buffer = StringBuffer();
-  buffer.writeln('const Map<String, List<String>> $mapName = {');
-  for (final key in sortedKeys) {
-    final errors = entries[key]!.toList()..sort();
-    buffer.write("  '");
-    buffer.write(key);
-    buffer.write("': [");
-    for (var i = 0; i < errors.length; i++) {
-      if (i != 0) {
-        buffer.write(', ');
-      }
-      buffer.write("'");
-      buffer.write(errors[i]);
-      buffer.write("'");
+  return {
+    for (final library in entries.keys.toList()..sort())
+      library: {
+        for (final member in entries[library]!.keys.toList()..sort())
+          member: entries[library]![member]!.toList()..sort(),
+      },
+  };
+}
+
+String _writeDart(Map<String, Map<String, List<String>>> map, String mapName) {
+  final buffer = StringBuffer()
+    ..writeln('const Map<String, Map<String, List<String>>> $mapName = {');
+  for (final library in map.entries) {
+    buffer.writeln('  ${_dartString(library.key)}: {');
+    for (final member in library.value.entries) {
+      final errors = member.value.map(_dartString).join(', ');
+      buffer.writeln('    ${_dartString(member.key)}: [$errors],');
     }
-    buffer.writeln('],');
+    buffer.writeln('  },');
   }
   buffer.writeln('};');
   return buffer.toString();
 }
 
-String _writeJson(List<String> sortedKeys, Map<String, Set<String>> entries) {
-  final map = <String, List<String>>{};
-  for (final key in sortedKeys) {
-    map[key] = entries[key]!.toList()..sort();
-  }
-  return const JsonEncoder.withIndent('  ').convert(map);
-}
+String _dartString(String value) =>
+    "'${value.replaceAll(r'\', r'\\').replaceAll("'", r"\'").replaceAll(r'$', r'\$')}'";
 
-String _writeYaml(List<String> sortedKeys, Map<String, Set<String>> entries) {
+String _writeYaml(Map<String, Map<String, List<String>>> map) {
   final buffer = StringBuffer();
-  for (final key in sortedKeys) {
-    buffer.writeln('${_yamlQuote(key)}:');
-    final errors = entries[key]!.toList()..sort();
-    for (final error in errors) {
-      buffer.writeln('  - ${_yamlQuote(error)}');
+  for (final library in map.entries) {
+    buffer.writeln('${_yamlQuote(library.key)}:');
+    for (final member in library.value.entries) {
+      final errors = member.value.map(_yamlQuote).join(', ');
+      buffer.writeln('  ${_yamlQuote(member.key)}: [$errors]');
     }
   }
   return buffer.toString();
 }
 
-String _yamlQuote(String value) {
-  final escaped = value.replaceAll("'", "''");
-  return "'$escaped'";
-}
+String _yamlQuote(String value) => "'${value.replaceAll("'", "''")}'";

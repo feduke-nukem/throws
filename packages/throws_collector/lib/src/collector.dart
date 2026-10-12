@@ -9,7 +9,8 @@ import 'sdk_library_map.dart';
 import 'spinner.dart';
 import 'throw_collectors.dart';
 
-Future<Map<String, Set<String>>> collectThrows({
+/// Errors per library URI, then per member path.
+Future<Map<String, Map<String, Set<String>>>> collectThrows({
   required String rootPath,
   List<File>? files,
 }) async {
@@ -21,7 +22,7 @@ Future<Map<String, Set<String>>> collectThrows({
   final packageName = packageInfo?.name ?? packageNameFromPubspec(root.path);
   final packageRoot = packageInfo?.root;
 
-  final entries = <String, Set<String>>{};
+  final entries = <String, Map<String, Set<String>>>{};
 
   final resolvedFiles = files ?? listDartFiles(root).toList();
   final spinner = Spinner(total: resolvedFiles.length);
@@ -51,15 +52,17 @@ Future<Map<String, Set<String>>> collectThrows({
     resolved.unit.accept(collector);
 
     for (final entry in collector.entries.entries) {
-      final key = entry.key;
-      final errors = entry.value;
-      if (errors.isEmpty) {
+      if (entry.value.isEmpty) {
         continue;
       }
-      entries.putIfAbsent(key, () => <String>{}).addAll(errors);
+      ((entries[libraryIdentifier] ??= {})[entry.key] ??= {}).addAll(
+        entry.value,
+      );
     }
   }
 
-  spinner.done(entries.length);
+  spinner.done(
+    entries.values.fold(0, (count, members) => count + members.length),
+  );
   return entries;
 }
