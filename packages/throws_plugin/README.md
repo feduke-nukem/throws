@@ -41,37 +41,59 @@ Diagnostics are reported at the call site for unhandled throws.
 
 ## throws.yaml
 
-Place throws.yaml at the package root to extend or override known throwing members.
+Place throws.yaml at the package root to declare errors of members outside your
+package (SDK or dependencies).
 
 ```yaml
 throws:
-  include_prebuilt:
-    - dart
-    - flutter
-  include_paths:
-    - gen/flutter_errors.yaml
-  custom_errors:
-    dart:core.Iterable.single:
-      - StateError
+  # Errors to check: exception (subtypes of Exception), error (subtypes of
+  # Error), or both (default). Types that are neither are always checked.
+  track: [exception, error]
+
+  # Bundled maps: dart, flutter. Off by default.
+  prebuilt: [dart]
+
+  # YAML files, or directories of them, in the same format as `members`
+  # (e.g. throws_collector output).
+  include:
+    - throws_collector_gen/
+
+  # Library URI, then member: errors (a name or a list).
+  members:
+    dart:core:
+      Iterable.single: [StateError]
+      int.parse: FormatException
+    package:http/http.dart:
+      get: [ClientException]
+      Client.new: [ArgumentError]
 ```
 
+Member names follow Dart tear-off syntax: `function` for top-level functions,
+`Class.member` for methods, getters and setters, `Class.new` and
+`Class.named` for constructors.
+
 Notes:
-- If include_prebuilt is empty, only entries from throws.yaml are used.
 - Prebuilt maps are heuristic only and come with no guarantees of completeness
   or accuracy.
-- include_paths may point to YAML files or directories containing YAML files
-  (only .yaml/.yml files are read).
-- Included files may contain a top-level map or a nested throws/map section.
+- Entries from `members` and `include` take precedence over prebuilt maps.
+- Unknown keys are ignored. Version 1 keys (`include_prebuilt`,
+  `include_paths`, `custom_errors`, `include_sdk_errors`) are no longer read.
 
 ## How errors are resolved
 
 When evaluating a call, the plugin resolves expected errors in this order:
 1. @Throws/@throws on the target element.
-2. throws.yaml maps (custom_errors and include_paths).
+2. throws.yaml (`members` and `include`).
 3. Prebuilt maps (dart/flutter) if enabled.
 4. Overrides (walks the override chain until a throwing element is found).
 
 If none are found, the call is treated as non-throwing.
+
+Errors are compared as types, including subtypes: `on Exception` handles a
+call that throws `FormatException`, and `@Throws(errors: {Exception})` covers a
+thrown `FormatException`. Names from throws.yaml and prebuilt maps are resolved
+in the scope of the library that declares the member; unresolved names count as
+an unknown error, which any catch clause handles.
 
 ## Limitations
 

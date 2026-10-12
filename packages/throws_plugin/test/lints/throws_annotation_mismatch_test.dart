@@ -199,4 +199,47 @@ void f() {
 }''',
     );
   }
+
+  void test_no_lint_when_extra_error_caught_locally() async {
+    await assertNoDiagnostics(
+      '''import 'package:throws/throws.dart';
+$coreStubs
+@Throws(errors: {FormatException})
+void f(bool b) {
+  try {
+    if (b) throw RangeError('x');
+  } on RangeError {
+    // handle
+  }
+  throw FormatException('x');
+}''',
+    );
+  }
+
+  void test_reports_when_called_function_adds_error() async {
+    final code =
+        '''import 'package:throws/throws.dart';
+$coreStubs
+@Throws(errors: {RangeError})
+void boom() {
+  throw RangeError('x');
+}
+
+@Throws(errors: {FormatException})
+void f() {
+  boom();
+  throw FormatException('x');
+}''';
+    await assertDiagnostics(code, [lint(code.indexOf('f()'), 1)]);
+  }
+
+  void test_no_lint_for_unknown_thrown_error() async {
+    await assertNoDiagnostics(
+      r'''import 'package:throws/throws.dart';
+@Throws(errors: {ArgumentError})
+void f(dynamic e) {
+  throw e;
+}''',
+    );
+  }
 }

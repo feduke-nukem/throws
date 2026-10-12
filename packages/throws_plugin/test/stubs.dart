@@ -1,25 +1,22 @@
 import 'package:analyzer_testing/analysis_rule/analysis_rule.dart';
 
+/// Classes missing from the mock SDK, with the real dart:core hierarchy.
 const coreStubs = '''
-class Exception {
-  const Exception([String? message]);
-}
-
-class ArgumentError implements Exception {
-  const ArgumentError([Object? message]);
-}
-
 class FormatException implements Exception {
   const FormatException([String? message]);
 }
 
-class RangeError implements Exception {
-  const RangeError([String? message]);
+class RangeError extends ArgumentError {
+  RangeError([String? message]) : super(message);
+}
+
+class StateError extends Error {
+  StateError(String message);
 }
 ''';
 
-void addThrowsPackage(AnalysisRuleTest test) {
-  test.newPackage('throws').addFile('lib/throws.dart', r'''
+/// Source of package:throws used in tests.
+const throwsLibrary = r'''
 const throws = Throws();
 
 class Throws {
@@ -31,5 +28,8 @@ class Throws {
     this.errors = const {},
   });
 }
-''');
+''';
+
+void addThrowsPackage(AnalysisRuleTest test) {
+  test.newPackage('throws').addFile('lib/throws.dart', throwsLibrary);
 }

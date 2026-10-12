@@ -76,4 +76,40 @@ void f() {
 }''',
     );
   }
+
+  void test_no_lint_when_calling_throwing_function() async {
+    await assertNoDiagnostics(
+      r'''import 'package:throws/throws.dart';
+@Throws(errors: {ArgumentError})
+void boom() {
+  throw ArgumentError();
+}
+
+@Throws(errors: {ArgumentError})
+void f() {
+  boom();
+}''',
+    );
+  }
+
+  void test_reports_when_throw_caught_locally() async {
+    const code = r'''import 'package:throws/throws.dart';
+@Throws(errors: {ArgumentError})
+void f() {
+  try {
+    throw ArgumentError();
+  } on ArgumentError {
+    // handle
+  }
+}''';
+    await assertDiagnostics(code, [lint(code.indexOf('f()'), 1)]);
+  }
+
+  void test_no_lint_for_external_function() async {
+    await assertNoDiagnostics(
+      r'''import 'package:throws/throws.dart';
+@throws
+external void f();''',
+    );
+  }
 }

@@ -5,15 +5,15 @@ import 'package:analyzer/analysis_rule/rule_context.dart';
 import 'package:analyzer/analysis_rule/rule_visitor_registry.dart';
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
+import 'package:analyzer/dart/element/type.dart';
 import 'package:analyzer/error/error.dart';
 import 'package:analyzer_plugin/utilities/change_builder/change_builder_core.dart';
 import 'package:analyzer_plugin/utilities/fixes/fixes.dart';
+import 'package:throws_plugin/src/data/error_set.dart';
 import 'package:throws_plugin/src/data/throws_annotation.dart';
 import 'package:throws_plugin/src/helpers.dart';
 import 'package:throws_plugin/src/utils/analysis_cache.dart';
-import 'package:throws_plugin/src/utils/extensions/type_annotation_x.dart';
-import 'package:throws_plugin/src/utils/throw_finder.dart';
-import 'package:throws_plugin/src/utils/throws_expected_errors_collector.dart';
+import 'package:throws_plugin/src/utils/extensions/ast_node_x.dart';
 
 class NotExhaustiveTryCatch extends AnalysisRule {
   static const LintCode _code = LintCode(
@@ -52,22 +52,15 @@ class _Visitor extends SimpleAstVisitor<void> {
 
   @override
   void visitCompilationUnit(CompilationUnit node) {
-    final summaries = AnalysisCache.throwsSummaries(node);
+    final analysis = AnalysisCache.analysis(node);
 
-    for (final summary in summaries) {
-      if (summary.unhandledThrowingCallNodes.isEmpty) {
-        continue;
-      }
-
-      final reportNodes = summary.unhandledThrowingCallNodes.where(
-        (node) => shouldReportUnhandledCall(
-          node,
-          requireTryCatch: true,
-        ),
-      );
-
-      for (final node in reportNodes) {
-        rule.reportAtNode(node);
+    for (final summary in analysis.summaries) {
+      for (final site in summary.sites) {
+        if (site.isCall &&
+            site.inTryWithCatch &&
+            !summary.uncovered(site, analysis.typeSystem).isEmpty) {
+          rule.reportAtNode(site.node);
+        }
       }
     }
   }
@@ -93,57 +86,34 @@ class NotExhaustiveTryCatchFix extends ResolvedCorrectionProducer {
   Future<void> compute(ChangeBuilder builder) async {
     try {
       final tryStatement = node.thisOrAncestorOfType<TryStatement>();
-      if (tryStatement == null) {
-        return;
-      }
-      if (tryStatement.catchClauses.isEmpty) {
+      if (tryStatement == null || tryStatement.catchClauses.isEmpty) {
         return;
       }
 
-      final unit = tryStatement.thisOrAncestorOfType<CompilationUnit>();
-      if (unit == null) {
+      final analysis = AnalysisCache.analysis(unit);
+      final summary = analysis.summaryFor(tryStatement.enclosingFunction);
+      if (summary == null) {
         return;
       }
 
-      final expectedErrors = _expectedErrorsForTryBody(tryStatement, unit);
-      if (expectedErrors.isEmpty) {
-        return;
+      final missing = <DartType>{};
+      for (final site in summary.sitesWithin(tryStatement.body)) {
+        if (site.isCall) {
+          missing.addAll(summary.uncovered(site, analysis.typeSystem).types);
+        }
       }
-
-      final annotatedErrors = annotatedErrorsForEnclosingFunction(tryStatement);
-      if (annotatedErrors != null && annotatedErrors.isEmpty) {
-        return;
-      }
-
-      final filteredExpectedErrors = annotatedErrors == null
-          ? expectedErrors
-          : expectedErrors
-                .where((error) => !annotatedErrors.contains(error))
-                .toList();
-      if (filteredExpectedErrors.isEmpty) {
-        return;
-      }
-
-      final handledErrors = _handledErrors(tryStatement);
-      if (handledErrors == null) {
-        return;
-      }
-
-      final missingErrors = filteredExpectedErrors
-          .where((error) => !handledErrors.contains(error))
-          .toList();
-      if (missingErrors.isEmpty) {
+      if (missing.isEmpty) {
         return;
       }
 
       final lastCatch = tryStatement.catchClauses.last;
-      final insertOffset = lastCatch.end;
       final indent = utils.getLinePrefix(lastCatch.offset);
       await builder.addDartFileEdit(file, (builder) {
-        builder.addInsertion(insertOffset, (builder) {
-          for (final error in missingErrors) {
-            builder.write(' on $error catch (e, stackTrace) {');
-            builder.writeln();
+        builder.addInsertion(lastCatch.end, (builder) {
+          for (final type in ErrorSet(missing).sortedTypes) {
+            builder.write(' on ');
+            builder.writeType(type);
+            builder.writeln(' catch (e, stackTrace) {');
             builder.writeln('$indent  // TODO: handle error');
             builder.write('$indent}');
           }
@@ -152,46 +122,6 @@ class NotExhaustiveTryCatchFix extends ResolvedCorrectionProducer {
     } catch (_) {
       return;
     }
-  }
-
-  List<String> _expectedErrorsForTryBody(
-    TryStatement statement,
-    CompilationUnit unit,
-  ) {
-    final localInfo = AnalysisCache.localThrowingInfo(unit);
-    final collector = ThrowsExpectedErrorsCollector(
-      localExpectedErrorsByElement: localInfo.expectedErrorsByElement,
-    );
-    statement.body.accept(collector);
-    return collector.expectedErrors;
-  }
-
-  Set<String>? _handledErrors(TryStatement statement) {
-    final handled = <String>{};
-
-    for (final clause in statement.catchClauses) {
-      if (_catchAlwaysRethrows(clause)) {
-        continue;
-      }
-
-      final typeName = clause.exceptionType?.typeName;
-      if (typeName == null) {
-        return null;
-      }
-      if (typeName == 'Object' || typeName == 'dynamic') {
-        return null;
-      }
-
-      handled.add(typeName);
-    }
-
-    return handled;
-  }
-
-  bool _catchAlwaysRethrows(CatchClause clause) {
-    final visitor = RethrowFinder();
-    clause.body.accept(visitor);
-    return visitor.foundRethrow;
   }
 }
 
@@ -215,26 +145,19 @@ class NotExhaustiveTryCatchDefaultFix extends ResolvedCorrectionProducer {
   Future<void> compute(ChangeBuilder builder) async {
     try {
       final tryStatement = node.thisOrAncestorOfType<TryStatement>();
-      if (tryStatement == null) {
+      if (tryStatement == null || tryStatement.catchClauses.isEmpty) {
         return;
       }
-      if (tryStatement.catchClauses.isEmpty) {
-        return;
-      }
-
-      final handled = _handledErrors(tryStatement);
-      if (handled == null) {
-        return;
-      }
-      if (handled.contains('Object') || handled.contains('dynamic')) {
+      if (tryStatement.catchClauses.any(
+        (clause) => !alwaysRethrows(clause) && catchesAll(clause),
+      )) {
         return;
       }
 
       final lastCatch = tryStatement.catchClauses.last;
-      final insertOffset = lastCatch.end;
       final indent = utils.getLinePrefix(lastCatch.offset);
       await builder.addDartFileEdit(file, (builder) {
-        builder.addInsertion(insertOffset, (builder) {
+        builder.addInsertion(lastCatch.end, (builder) {
           builder.write(' on Object catch (e, stackTrace) {');
           builder.writeln();
           builder.writeln('$indent  // TODO: handle error');
@@ -244,33 +167,5 @@ class NotExhaustiveTryCatchDefaultFix extends ResolvedCorrectionProducer {
     } catch (_) {
       return;
     }
-  }
-
-  Set<String>? _handledErrors(TryStatement statement) {
-    final handled = <String>{};
-
-    for (final clause in statement.catchClauses) {
-      if (_catchAlwaysRethrows(clause)) {
-        continue;
-      }
-
-      final typeName = clause.exceptionType?.typeName;
-      if (typeName == null) {
-        return null;
-      }
-      if (typeName == 'Object' || typeName == 'dynamic') {
-        return null;
-      }
-
-      handled.add(typeName);
-    }
-
-    return handled;
-  }
-
-  bool _catchAlwaysRethrows(CatchClause clause) {
-    final visitor = RethrowFinder();
-    clause.body.accept(visitor);
-    return visitor.foundRethrow;
   }
 }

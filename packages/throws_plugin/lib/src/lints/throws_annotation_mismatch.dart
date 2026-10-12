@@ -5,7 +5,6 @@ import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
 import 'package:analyzer/error/error.dart';
 import 'package:throws_plugin/src/data/throws_annotation.dart';
-import 'package:throws_plugin/src/helpers.dart';
 import 'package:throws_plugin/src/utils/analysis_cache.dart';
 
 class ThrowsAnnotationMismatch extends AnalysisRule {
@@ -45,13 +44,11 @@ class _Visitor extends SimpleAstVisitor<void> {
 
   @override
   void visitCompilationUnit(CompilationUnit node) {
-    final summaries = AnalysisCache.throwsSummaries(node);
+    final analysis = AnalysisCache.analysis(node);
 
-    for (final summary in summaries) {
-      if (summary.hasThrowsAnnotation &&
-          !summary.allowAnyExpectedErrors &&
-          summary.thrownErrors.isNotEmpty &&
-          !matchesAnnotation(summary)) {
+    for (final summary in analysis.summaries) {
+      if (summary.escaping.types.isNotEmpty &&
+          !analysis.matchesAnnotation(summary)) {
         rule.reportAtToken(summary.nameToken);
       }
     }

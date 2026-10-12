@@ -9,11 +9,10 @@ import 'package:analyzer/error/error.dart';
 import 'package:analyzer_plugin/utilities/change_builder/change_builder_core.dart';
 import 'package:analyzer_plugin/utilities/fixes/fixes.dart';
 import 'package:analyzer_plugin/utilities/range_factory.dart';
+import 'package:throws_plugin/src/data/error_set.dart';
 import 'package:throws_plugin/src/data/throws_annotation.dart';
-import 'package:throws_plugin/src/helpers.dart';
 import 'package:throws_plugin/src/utils/analysis_cache.dart';
 import 'package:throws_plugin/src/utils/extensions/ast_node_x.dart';
-import 'package:throws_plugin/src/utils/extensions/expression_x.dart';
 import 'package:throws_plugin/src/utils/extensions/statement_x.dart';
 
 class NoTryCatch extends AnalysisRule {
@@ -53,22 +52,15 @@ class _Visitor extends SimpleAstVisitor<void> {
 
   @override
   void visitCompilationUnit(CompilationUnit node) {
-    final summaries = AnalysisCache.throwsSummaries(node);
+    final analysis = AnalysisCache.analysis(node);
 
-    for (final summary in summaries) {
-      if (summary.unhandledThrowingCallNodes.isEmpty) {
-        continue;
-      }
-
-      final reportNodes = summary.unhandledThrowingCallNodes.where(
-        (node) => shouldReportUnhandledCall(
-          node,
-          requireTryCatch: false,
-        ),
-      );
-
-      for (final node in reportNodes) {
-        rule.reportAtNode(node);
+    for (final summary in analysis.summaries) {
+      for (final site in summary.sites) {
+        if (site.isCall &&
+            !site.inTryWithCatch &&
+            !summary.uncovered(site, analysis.typeSystem).isEmpty) {
+          rule.reportAtNode(site.node);
+        }
       }
     }
   }
@@ -93,55 +85,33 @@ class NoTryCatchFix extends ResolvedCorrectionProducer {
   @override
   Future<void> compute(ChangeBuilder builder) async {
     try {
-      final statement = node.enclosingStatement;
-      if (statement == null || statement.isSynthetic) {
-        return;
-      }
-      if (statement.isWithinTryStatement) {
+      final statement = _wrappableStatement(node);
+      if (statement == null) {
         return;
       }
 
-      final expression = statement.expression;
-      if (expression == null) {
-        return;
-      }
-
-      final expectedErrors = expression.expectedErrors(unit);
-      if (expectedErrors == null) {
-        return;
-      }
-
-      final annotatedErrors = annotatedErrorsForEnclosingFunction(statement);
-      if (annotatedErrors != null && annotatedErrors.isEmpty) {
-        return;
-      }
-
-      final filteredExpectedErrors = annotatedErrors == null
-          ? expectedErrors
-          : expectedErrors
-                .where((error) => !annotatedErrors.contains(error))
-                .toList();
-      if (filteredExpectedErrors.isEmpty) {
-        return;
-      }
-
-      final statementSource = statement.toSource().trim();
-      if (statementSource.isEmpty) {
+      final errors = _uncoveredErrors(unit, statement);
+      if (errors.isEmpty) {
         return;
       }
 
       final replacementRange = utils.getLinesRange(range.node(statement));
       final indent = utils.getLinePrefix(replacementRange.offset);
-      final errors = filteredExpectedErrors.isEmpty
-          ? const ['Object']
-          : filteredExpectedErrors;
+      final types = errors.sortedTypes;
       await builder.addDartFileEdit(file, (builder) {
         builder.addReplacement(replacementRange, (builder) {
           builder.writeln('${indent}try {');
-          builder.writeln('$indent  $statementSource');
+          builder.writeln('$indent  ${statement.toSource().trim()}');
           builder.write('$indent}');
-          for (final error in errors) {
-            builder.writeln(' on $error catch (e, stackTrace) {');
+          if (types.isEmpty) {
+            builder.writeln(' on Object catch (e, stackTrace) {');
+            builder.writeln('$indent  // TODO: handle error');
+            builder.write('$indent}');
+          }
+          for (final type in types) {
+            builder.write(' on ');
+            builder.writeType(type);
+            builder.writeln(' catch (e, stackTrace) {');
             builder.writeln('$indent  // TODO: handle error');
             builder.write('$indent}');
           }
@@ -173,26 +143,8 @@ class NoTryCatchWithDefaultFix extends ResolvedCorrectionProducer {
   @override
   Future<void> compute(ChangeBuilder builder) async {
     try {
-      final statement = node.enclosingStatement;
-      if (statement == null || statement.isSynthetic) {
-        return;
-      }
-      if (statement.isWithinTryStatement) {
-        return;
-      }
-
-      final expression = statement.expression;
-      if (expression == null) {
-        return;
-      }
-
-      final expectedErrors = expression.expectedErrors(unit);
-      if (expectedErrors == null) {
-        return;
-      }
-
-      final statementSource = statement.toSource().trim();
-      if (statementSource.isEmpty) {
+      final statement = _wrappableStatement(node);
+      if (statement == null || _uncoveredErrors(unit, statement).isEmpty) {
         return;
       }
 
@@ -201,7 +153,7 @@ class NoTryCatchWithDefaultFix extends ResolvedCorrectionProducer {
       await builder.addDartFileEdit(file, (builder) {
         builder.addReplacement(replacementRange, (builder) {
           builder.writeln('${indent}try {');
-          builder.writeln('$indent  $statementSource');
+          builder.writeln('$indent  ${statement.toSource().trim()}');
           builder.writeln('$indent} on Object catch (e, stackTrace) {');
           builder.writeln('$indent  // TODO: handle error');
           builder.writeln('$indent}');
@@ -211,4 +163,33 @@ class NoTryCatchWithDefaultFix extends ResolvedCorrectionProducer {
       return;
     }
   }
+}
+
+/// Statement around [node] that a try/catch can wrap.
+Statement? _wrappableStatement(AstNode node) {
+  final statement = node.enclosingStatement;
+  if (statement == null ||
+      statement.isSynthetic ||
+      statement.isWithinTryStatement ||
+      statement.expression == null) {
+    return null;
+  }
+  return statement;
+}
+
+/// Errors from calls in [statement] that the enclosing function does not
+/// declare.
+ErrorSet _uncoveredErrors(CompilationUnit unit, Statement statement) {
+  final analysis = AnalysisCache.analysis(unit);
+  final summary = analysis.summaryFor(statement.enclosingFunction);
+  if (summary == null) {
+    return ErrorSet.empty;
+  }
+  var errors = ErrorSet.empty;
+  for (final site in summary.sitesWithin(statement)) {
+    if (site.isCall) {
+      errors = errors.union(summary.uncovered(site, analysis.typeSystem));
+    }
+  }
+  return errors;
 }

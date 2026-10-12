@@ -1,3 +1,4 @@
+import 'package:analyzer/dart/element/type.dart';
 import 'package:analyzer_plugin/utilities/change_builder/change_builder_dart.dart';
 import 'package:throws_plugin/src/data/throws_annotation.dart';
 
@@ -31,5 +32,15 @@ extension DartFileEditBuilderX on DartFileEditBuilder {
     if (prefix != null) return '$prefix.$name';
 
     return name;
+  }
+}
+
+/// Writes [types] separated by commas, importing them where needed.
+void writeTypeList(DartEditBuilder builder, List<DartType> types) {
+  for (var i = 0; i < types.length; i++) {
+    if (i > 0) {
+      builder.write(', ');
+    }
+    builder.writeType(types[i]);
   }
 }

@@ -1,260 +1,416 @@
 import 'package:analyzer/dart/ast/ast.dart';
+import 'package:analyzer/dart/ast/token.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
 import 'package:analyzer/dart/element/element.dart';
+import 'package:analyzer/dart/element/nullability_suffix.dart';
+import 'package:analyzer/dart/element/type.dart';
+import 'package:analyzer/dart/element/type_system.dart';
+import 'package:throws_plugin/src/data/error_set.dart';
 import 'package:throws_plugin/src/data/function_summary.dart';
 import 'package:throws_plugin/src/helpers.dart';
-import 'package:throws_plugin/src/utils/extensions/ast_node_x.dart';
-import 'package:throws_plugin/src/utils/extensions/expression_x.dart';
+import 'package:throws_plugin/src/throws_config.dart';
 
-class ThrowsAnalyzer {
-  List<FunctionSummary> analyze(CompilationUnit unit) {
-    final collector = _FunctionCollector();
-    unit.accept(collector);
+/// Result of analyzing one compilation unit.
+class ThrowsAnalysis {
+  final List<FunctionSummary> summaries;
+  final TypeSystem? _typeSystem;
+  final ThrowsConfig config;
+  final Map<AstNode, FunctionSummary> _byDeclaration;
 
-    for (final summary in collector.summaries) {
-      final visitor = _FunctionBodyVisitor(
-        summary,
-        includeAnnotatedAndSdk: true,
-        localThrowingElements: const {},
-      );
-      summary.body.accept(visitor);
+  ThrowsAnalysis._(this.summaries, this._typeSystem, this.config)
+    : _byDeclaration = {
+        for (final summary in summaries) summary.declaration: summary,
+      };
+
+  /// Analysis of a unit without resolution: nothing to report.
+  ThrowsAnalysis._empty() : this._(const [], null, const ThrowsConfig());
+
+  TypeSystem get typeSystem => _typeSystem!;
+
+  /// Summary for a function/method/constructor declaration node.
+  FunctionSummary? summaryFor(AstNode? declaration) =>
+      declaration == null ? null : _byDeclaration[declaration];
+
+  /// Whether `@Throws` of [summary] declares exactly what it throws: every
+  /// thrown error is covered and every tracked declared error is thrown.
+  bool matchesAnnotation(FunctionSummary summary) {
+    final annotation = summary.annotation;
+    if (annotation == null || annotation.allowsAny) {
+      return true;
     }
-
-    final localThrowingElements = <Element>{};
-    collector.summaryByElement.forEach((element, summary) {
-      if (summary.hasUnhandledThrow || summary.hasUnhandledThrowingCall) {
-        localThrowingElements.add(element);
-      }
-    });
-
-    if (localThrowingElements.isNotEmpty) {
-      for (final summary in collector.summaries) {
-        final visitor = _FunctionBodyVisitor(
-          summary,
-          includeAnnotatedAndSdk: false,
-          localThrowingElements: localThrowingElements,
-        );
-        summary.body.accept(visitor);
-      }
-    }
-
-    return collector.summaries;
+    final thrown = summary.escaping.types;
+    final declared = annotation.errors.where(config.tracks);
+    final covered = thrown.every(
+      (type) => declared.any((error) => typeSystem.isSubtypeOf(type, error)),
+    );
+    final used = declared.every(
+      (error) => thrown.any((type) => typeSystem.isSubtypeOf(type, error)),
+    );
+    return covered && used;
   }
 }
 
-class _FunctionCollector extends RecursiveAstVisitor<void> {
+class ThrowsAnalyzer {
+  final ThrowsConfig _config;
+  final TypeSystem _typeSystem;
+  final LibraryElement _library;
+
+  /// Raw declared errors per callee (annotation or throws maps).
+  final Map<Element, ErrorSet?> _declared = {};
+
+  /// Unannotated functions of this unit, keyed by element.
+  final Map<Element, FunctionSummary> _local = {};
+
+  ThrowsAnalyzer._(this._library)
+    : _config = ThrowsConfig.of(_library.session),
+      _typeSystem = _library.typeSystem;
+
+  static ThrowsAnalysis analyze(CompilationUnit unit) {
+    final library = unit.declaredFragment?.element;
+    if (library == null) {
+      return ThrowsAnalysis._empty();
+    }
+    return ThrowsAnalyzer._(library)._analyze(unit);
+  }
+
+  ThrowsAnalysis _analyze(CompilationUnit unit) {
+    final collector = _DeclarationCollector();
+    unit.accept(collector);
+    final summaries = collector.summaries;
+
+    for (final summary in summaries) {
+      final element = summary.element;
+      if (element != null && _declaredErrors(element) == null) {
+        _local[element.baseElement] = summary;
+      }
+    }
+
+    // Local unannotated functions feed their errors to callers in this unit;
+    // repeat until no local function changes what it throws.
+    final localSummaries = _local.values.toSet();
+    var changed = true;
+    for (var pass = 0; changed && pass <= summaries.length; pass++) {
+      changed = false;
+      for (final summary in summaries) {
+        final before = summary.escaping;
+        _collectSites(summary);
+        if (localSummaries.contains(summary) &&
+            !summary.escaping.sameAs(before)) {
+          changed = true;
+        }
+      }
+    }
+
+    return ThrowsAnalysis._(summaries, _typeSystem, _config);
+  }
+
+  void _collectSites(FunctionSummary summary) {
+    final collector = _SiteCollector(this, summary);
+    summary.hasUntrackedThrow = false;
+    summary.body.accept(collector);
+    summary.sites = collector.sites;
+    summary.escaping = collector.sites.fold(
+      ErrorSet.empty,
+      (union, site) => union.union(site.errors),
+    );
+  }
+
+  /// Declared errors of [element] or the members it overrides; null when
+  /// the callee is not known to throw.
+  ErrorSet? _declaredErrors(Element? element) {
+    final executable = element is ExecutableElement
+        ? element.baseElement
+        : null;
+    if (executable == null) {
+      return null;
+    }
+    if (_declared.containsKey(executable)) {
+      return _declared[executable];
+    }
+
+    ErrorSet? result;
+    for (final member in [executable, ...overriddenMembers(executable)]) {
+      final contract = annotationContract(member);
+      if (contract != null) {
+        result = contract.allowsAny
+            ? ErrorSet.unknownOnly
+            : ErrorSet(contract.errors);
+        break;
+      }
+      final names = _config.errorNamesFor(member);
+      if (names != null) {
+        result = _resolveNames(names, member.library);
+        break;
+      }
+    }
+    return _declared[executable] = result;
+  }
+
+  /// Resolves error names from throws maps in the scope of the library that
+  /// declares the member, falling back to dart:core.
+  ErrorSet _resolveNames(List<String> names, LibraryElement library) {
+    final core = _library.typeProvider.objectType.element.library;
+    final types = <DartType>{};
+    for (final name in names) {
+      final element =
+          library.firstFragment.scope.lookup(name).getter ??
+          core.firstFragment.scope.lookup(name).getter;
+      if (element is InterfaceElement) {
+        types.add(
+          _typeSystem.instantiateInterfaceToBounds(
+            element: element,
+            nullabilitySuffix: NullabilitySuffix.none,
+          ),
+        );
+      }
+    }
+    return types.isEmpty ? ErrorSet.unknownOnly : ErrorSet(types);
+  }
+
+  /// Keeps tracked types; null when everything thrown is untracked.
+  ErrorSet? _tracked(ErrorSet errors, FunctionSummary summary) {
+    final types = errors.types.where(_config.tracks).toSet();
+    if (types.isEmpty && !errors.unknown) {
+      summary.hasUntrackedThrow = true;
+      return null;
+    }
+    return types.length == errors.types.length
+        ? errors
+        : ErrorSet(types, unknown: errors.unknown);
+  }
+
+  ThrowSite? _throwSite(FunctionSummary summary, AstNode node, DartType? type) {
+    final errors = type == null || type is DynamicType || type is InvalidType
+        ? ErrorSet.unknownOnly
+        : _tracked(ErrorSet({type}), summary);
+    if (errors == null) {
+      return null;
+    }
+    return _site(summary, node, errors, isCall: false);
+  }
+
+  ThrowSite? _callSite(
+    FunctionSummary summary,
+    AstNode node,
+    Element? element,
+  ) {
+    var errors = _declaredErrors(element);
+    if (errors != null) {
+      errors = _tracked(errors, summary);
+    } else {
+      final local = _local[element?.baseElement];
+      if (local == null) {
+        return null;
+      }
+      if (local.hasUntrackedThrow) {
+        summary.hasUntrackedThrow = true;
+      }
+      errors = local.escaping;
+    }
+    if (errors == null || errors.isEmpty) {
+      return null;
+    }
+    return _site(summary, node, errors, isCall: true);
+  }
+
+  /// Applies try/catch statements around [node] within the function body.
+  ThrowSite? _site(
+    FunctionSummary summary,
+    AstNode node,
+    ErrorSet errors, {
+    required bool isCall,
+  }) {
+    final types = {...errors.types};
+    var unknown = errors.unknown;
+    var inTryWithCatch = false;
+
+    for (
+      AstNode? current = node.parent;
+      current != null && current != summary.body;
+      current = current.parent
+    ) {
+      if (current is! TryStatement ||
+          current.catchClauses.isEmpty ||
+          node.offset < current.body.offset ||
+          node.end > current.body.end) {
+        continue;
+      }
+      inTryWithCatch = true;
+      for (final clause in current.catchClauses) {
+        if (alwaysRethrows(clause)) {
+          continue;
+        }
+        if (catchesAll(clause)) {
+          return null;
+        }
+        final caught = clause.exceptionType!.type!;
+        unknown = false;
+        types.removeWhere((type) => _typeSystem.isSubtypeOf(type, caught));
+      }
+      if (types.isEmpty && !unknown) {
+        return null;
+      }
+    }
+
+    return ThrowSite(
+      node: node,
+      isCall: isCall,
+      errors: ErrorSet(types, unknown: unknown),
+      inTryWithCatch: inTryWithCatch,
+    );
+  }
+}
+
+class _DeclarationCollector extends RecursiveAstVisitor<void> {
   final List<FunctionSummary> summaries = [];
-  final Map<Element, FunctionSummary> summaryByElement = {};
 
   @override
   void visitFunctionDeclaration(FunctionDeclaration node) {
-    final expectedErrors = expectedErrorsFromMetadata(node.metadata).toSet();
-    final summary = FunctionSummary(
-      nameToken: node.name,
-      body: node.functionExpression.body,
-      hasThrowsAnnotation: hasThrowsAnnotationOnNode(node.metadata),
-      annotatedExpectedErrors: expectedErrors,
-      allowAnyExpectedErrors:
-          hasThrowsAnnotationOnNode(node.metadata) && expectedErrors.isEmpty,
-      isAbstractOrExternal: isAbstractOrExternalBody(
+    _add(
+      node,
+      node.name,
+      node.functionExpression.body,
+      node.declaredFragment?.element,
+      isAbstractOrExternalBody(
         node.functionExpression.body,
-        node.externalKeyword,
+        node.externalKeyword != null,
       ),
     );
-    summary.element = node.declaredFragment?.element.baseElement;
-    summaries.add(summary);
-    final element = node.declaredFragment?.element;
-    if (element != null) {
-      summaryByElement[element.baseElement] = summary;
-    }
     super.visitFunctionDeclaration(node);
   }
 
   @override
   void visitMethodDeclaration(MethodDeclaration node) {
-    final expectedErrors = expectedErrorsFromMetadata(node.metadata).toSet();
-    final summary = FunctionSummary(
-      nameToken: node.name,
-      body: node.body,
-      hasThrowsAnnotation: hasThrowsAnnotationOnNode(node.metadata),
-      annotatedExpectedErrors: expectedErrors,
-      allowAnyExpectedErrors:
-          hasThrowsAnnotationOnNode(node.metadata) && expectedErrors.isEmpty,
-      isAbstractOrExternal:
-          node.isAbstract ||
-          isAbstractOrExternalBody(node.body, node.externalKeyword),
+    _add(
+      node,
+      node.name,
+      node.body,
+      node.declaredFragment?.element,
+      isAbstractOrExternalBody(node.body, node.externalKeyword != null),
     );
-    summary.element = node.declaredFragment?.element.baseElement;
-    summaries.add(summary);
-    final element = node.declaredFragment?.element;
-    if (element != null) {
-      summaryByElement[element.baseElement] = summary;
-    }
     super.visitMethodDeclaration(node);
   }
 
   @override
   void visitConstructorDeclaration(ConstructorDeclaration node) {
-    final expectedErrors = expectedErrorsFromMetadata(node.metadata).toSet();
-    final summary = FunctionSummary(
-      // ignore: deprecated_member_use
-      nameToken: node.name ?? node.returnType.beginToken,
-      body: node.body,
-      hasThrowsAnnotation: hasThrowsAnnotationOnNode(node.metadata),
-      annotatedExpectedErrors: expectedErrors,
-      allowAnyExpectedErrors:
-          hasThrowsAnnotationOnNode(node.metadata) && expectedErrors.isEmpty,
-      isAbstractOrExternal: isAbstractOrExternalBody(
-        node.body,
-        node.externalKeyword,
+    _add(
+      node,
+      node.name ??
+          node.typeName?.token ??
+          node.firstTokenAfterCommentAndMetadata,
+      node.body,
+      node.declaredFragment?.element,
+      isAbstractOrExternalBody(node.body, node.externalKeyword != null),
+    );
+    super.visitConstructorDeclaration(node);
+  }
+
+  void _add(
+    AstNode node,
+    Token nameToken,
+    FunctionBody body,
+    ExecutableElement? element,
+    bool isAbstractOrExternal,
+  ) {
+    final base = element?.baseElement;
+    summaries.add(
+      FunctionSummary(
+        declaration: node,
+        nameToken: nameToken,
+        body: body,
+        element: base,
+        annotation: base == null ? null : annotationContract(base),
+        inherited: base == null ? null : inheritedContract(base),
+        isAbstractOrExternal: isAbstractOrExternal,
       ),
     );
-    summary.element = node.declaredFragment?.element.baseElement;
-    summaries.add(summary);
-    final element = node.declaredFragment?.element;
-    if (element != null) {
-      summaryByElement[element.baseElement] = summary;
-    }
-    super.visitConstructorDeclaration(node);
   }
 }
 
-class _FunctionBodyVisitor extends RecursiveAstVisitor<void> {
+/// Collects throw and throwing call sites of one body, skipping nested
+/// functions (they have their own summaries or run later).
+class _SiteCollector extends RecursiveAstVisitor<void> {
+  final ThrowsAnalyzer _analyzer;
   final FunctionSummary _summary;
-  final bool _includeAnnotatedAndSdk;
-  final Set<Element> _localThrowingElements;
+  final List<ThrowSite> sites = [];
 
-  _FunctionBodyVisitor(
-    this._summary, {
-    required bool includeAnnotatedAndSdk,
-    required Set<Element> localThrowingElements,
-  }) : _includeAnnotatedAndSdk = includeAnnotatedAndSdk,
-       _localThrowingElements = localThrowingElements;
+  _SiteCollector(this._analyzer, this._summary);
 
-  @override
-  void visitFunctionExpression(FunctionExpression node) {
-    // Skip nested functions/closures when analyzing the outer function.
+  void _add(ThrowSite? site) {
+    if (site != null) {
+      sites.add(site);
+    }
+  }
+
+  void _call(AstNode node, Element? element) {
+    _add(_analyzer._callSite(_summary, node, element));
   }
 
   @override
-  void visitMethodDeclaration(MethodDeclaration node) {
-    // Skip nested methods when analyzing the outer function.
-  }
+  void visitFunctionExpression(FunctionExpression node) {}
 
   @override
-  void visitFunctionDeclaration(FunctionDeclaration node) {
-    // Skip nested functions when analyzing the outer function.
-  }
+  void visitFunctionDeclaration(FunctionDeclaration node) {}
+
+  @override
+  void visitMethodDeclaration(MethodDeclaration node) {}
 
   @override
   void visitThrowExpression(ThrowExpression node) {
-    if (!node.isHandledByTryCatch()) {
-      _summary.hasUnhandledThrow = true;
-      _summary.unhandledThrowNodes.add(node);
-      final typeName = node.expression.typeName;
-      if (typeName != null) {
-        _summary.thrownErrors.add(typeName);
-      }
-    }
+    _add(_analyzer._throwSite(_summary, node, node.expression.staticType));
     super.visitThrowExpression(node);
   }
 
   @override
   void visitRethrowExpression(RethrowExpression node) {
-    if (!node.isHandledByTryCatch()) {
-      _summary.hasUnhandledThrow = true;
-      _summary.unhandledThrowNodes.add(node);
-      final catchTypeName = node.catchClauseTypeName;
-      _summary.thrownErrors.add(catchTypeName ?? 'Object');
-    }
+    final caught = node.thisOrAncestorOfType<CatchClause>()?.exceptionType;
+    _add(
+      _analyzer._throwSite(
+        _summary,
+        node,
+        caught?.type ?? _analyzer._library.typeProvider.objectType,
+      ),
+    );
     super.visitRethrowExpression(node);
   }
 
   @override
   void visitMethodInvocation(MethodInvocation node) {
     if (isErrorThrowWithStackTrace(node)) {
-      final expectedErrors = expectedErrorsFromErrorThrowWithStackTrace(node);
-      if (!node.isHandledByTryCatch(expectedErrors)) {
-        _summary.hasUnhandledThrow = true;
-        _summary.unhandledThrowNodes.add(node);
-        final typeName = typeNameFromErrorThrowWithStackTrace(node);
-        if (typeName != null) {
-          _summary.thrownErrors.add(typeName);
-        }
-      }
-      super.visitMethodInvocation(node);
-      return;
-    }
-    final element = node.methodName.element;
-    if (_includeAnnotatedAndSdk && isThrowsAnnotatedOrSdk(element)) {
-      _registerUnhandledThrowingCall(
-        node,
-        node.methodName,
-        expectedErrorsFromElementOrSdk(element),
-        addThrownErrors: true,
+      final arguments = node.argumentList.arguments;
+      _add(
+        _analyzer._throwSite(
+          _summary,
+          node,
+          arguments.isEmpty
+              ? null
+              : arguments.first.argumentExpression.staticType,
+        ),
       );
-    }
-    if (_isLocalThrowingElement(element) &&
-        !_isHandledLocalThrowingCall(node, element)) {
-      _summary.hasUnhandledThrowingCall = true;
-      _summary.unhandledThrowingCallNodes.add(node.methodName);
+    } else {
+      _call(node.methodName, node.methodName.element);
     }
     super.visitMethodInvocation(node);
   }
 
   @override
   void visitFunctionExpressionInvocation(FunctionExpressionInvocation node) {
-    final element = node.element;
-    if (_includeAnnotatedAndSdk && isThrowsAnnotatedOrSdk(element)) {
-      _registerUnhandledThrowingCall(
-        node,
-        node,
-        expectedErrorsFromElementOrSdk(element),
-        addThrownErrors: true,
-      );
-    }
-    if (_isLocalThrowingElement(element) &&
-        !_isHandledLocalThrowingCall(node, element)) {
-      _summary.hasUnhandledThrowingCall = true;
-      _summary.unhandledThrowingCallNodes.add(node);
-    }
+    _call(node, node.element);
     super.visitFunctionExpressionInvocation(node);
   }
 
   @override
   void visitInstanceCreationExpression(InstanceCreationExpression node) {
-    final element = node.constructorName.element;
-    if (_includeAnnotatedAndSdk && isThrowsAnnotatedOrSdk(element)) {
-      _registerUnhandledThrowingCall(
-        node,
-        node.constructorName,
-        expectedErrorsFromElementOrSdk(element),
-        addThrownErrors: true,
-      );
-    }
-    if (_isLocalThrowingElement(element) &&
-        !_isHandledLocalThrowingCall(node, element)) {
-      _summary.hasUnhandledThrowingCall = true;
-      _summary.unhandledThrowingCallNodes.add(node.constructorName);
-    }
+    _call(node.constructorName, node.constructorName.element);
     super.visitInstanceCreationExpression(node);
   }
 
+  // Property reads call getters; method tear-offs are not calls.
   @override
   void visitPropertyAccess(PropertyAccess node) {
     final element = node.propertyName.element;
-    if (_includeAnnotatedAndSdk && isThrowsAnnotatedOrSdk(element)) {
-      _registerUnhandledThrowingCall(
-        node,
-        node.propertyName,
-        expectedErrorsFromElementOrSdk(element),
-        addThrownErrors: true,
-      );
-    }
-    if (_isLocalThrowingElement(element) &&
-        !_isHandledLocalThrowingCall(node, element)) {
-      _summary.hasUnhandledThrowingCall = true;
-      _summary.unhandledThrowingCallNodes.add(node.propertyName);
+    if (element is PropertyAccessorElement) {
+      _call(node.propertyName, element);
     }
     super.visitPropertyAccess(node);
   }
@@ -262,72 +418,25 @@ class _FunctionBodyVisitor extends RecursiveAstVisitor<void> {
   @override
   void visitPrefixedIdentifier(PrefixedIdentifier node) {
     final element = node.identifier.element;
-    if (_includeAnnotatedAndSdk && isThrowsAnnotatedOrSdk(element)) {
-      _registerUnhandledThrowingCall(
-        node,
-        node.identifier,
-        expectedErrorsFromElementOrSdk(element),
-        addThrownErrors: true,
-      );
-    }
-    if (_isLocalThrowingElement(element) &&
-        !_isHandledLocalThrowingCall(node, element)) {
-      _summary.hasUnhandledThrowingCall = true;
-      _summary.unhandledThrowingCallNodes.add(node.identifier);
+    if (element is PropertyAccessorElement) {
+      _call(node.identifier, element);
     }
     super.visitPrefixedIdentifier(node);
   }
 
-  bool _isLocalThrowingElement(Element? element) {
-    if (element == null) {
-      return false;
+  /// Getter read through implicit `this` or a top-level getter.
+  @override
+  void visitSimpleIdentifier(SimpleIdentifier node) {
+    final parent = node.parent;
+    final handledByParent =
+        (parent is PropertyAccess && parent.propertyName == node) ||
+        (parent is PrefixedIdentifier && parent.identifier == node) ||
+        (parent is MethodInvocation && parent.methodName == node);
+    if (!handledByParent &&
+        node.element is GetterElement &&
+        !node.inDeclarationContext()) {
+      _call(node, node.element);
     }
-    if (_localThrowingElements.isEmpty) {
-      return false;
-    }
-    return _localThrowingElements.contains(element.baseElement);
-  }
-
-  bool _isHandledThrowingCall(AstNode node, Set<String> expectedErrors) {
-    if (expectedErrors.isEmpty) {
-      return node.isWithinTryWithCatch;
-    }
-    return node.unhandledExpectedErrors(expectedErrors).isEmpty;
-  }
-
-  bool _isHandledLocalThrowingCall(AstNode node, Element? element) {
-    final expectedErrors = expectedErrorsFromElementOrSdk(element);
-    if (expectedErrors.isNotEmpty) {
-      return _isHandledThrowingCall(node, expectedErrors);
-    }
-    return node.isHandledByTryCatch();
-  }
-
-  bool _registerUnhandledThrowingCall(
-    AstNode node,
-    AstNode reportNode,
-    Set<String> expectedErrors, {
-    required bool addThrownErrors,
-  }) {
-    if (expectedErrors.isEmpty) {
-      if (!node.isWithinTryWithCatch) {
-        _summary.hasUnhandledThrowingCall = true;
-        _summary.unhandledThrowingCallNodes.add(reportNode);
-        return true;
-      }
-      return false;
-    }
-
-    final unhandled = node.unhandledExpectedErrors(expectedErrors);
-    if (unhandled.isEmpty) {
-      return false;
-    }
-
-    _summary.hasUnhandledThrowingCall = true;
-    _summary.unhandledThrowingCallNodes.add(reportNode);
-    if (addThrownErrors) {
-      _summary.thrownErrors.addAll(unhandled);
-    }
-    return true;
+    super.visitSimpleIdentifier(node);
   }
 }

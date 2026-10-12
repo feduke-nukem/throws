@@ -47,7 +47,7 @@ void f() {
     // handle
   }
 }''',
-      [lint(517, 14)],
+      [lint(448, 14)],
     );
   }
 
@@ -100,6 +100,85 @@ void f() {
   try {
     delegatedParse('7');
   } on FormatException catch (_) {
+    // handle
+  }
+}''',
+    );
+  }
+
+  void test_no_lint_when_supertype_caught() async {
+    await assertNoDiagnostics(
+      '''import 'package:throws/throws.dart';
+$coreStubs
+@Throws(errors: {FormatException, RangeError})
+void boom() {
+  throw FormatException('x');
+}
+
+void f() {
+  try {
+    boom();
+  } on Exception {
+    // handle
+  } on ArgumentError {
+    // handle
+  }
+}''',
+    );
+  }
+
+  void test_reports_when_matching_catch_rethrows() async {
+    final code =
+        '''import 'package:throws/throws.dart';
+$coreStubs
+@Throws(errors: {FormatException})
+void boom() {
+  throw FormatException('x');
+}
+
+void f() {
+  try {
+    boom();
+  } on FormatException {
+    rethrow;
+  }
+}''';
+    await assertDiagnostics(code, [lint(code.lastIndexOf('boom'), 4)]);
+  }
+
+  void test_no_lint_for_unknown_errors() async {
+    await assertNoDiagnostics(
+      r'''import 'package:throws/throws.dart';
+@throws
+void boom() {}
+
+void f() {
+  try {
+    boom();
+  } on ArgumentError {
+    // handle
+  }
+}''',
+    );
+  }
+
+  void test_no_lint_when_outer_try_covers_rest() async {
+    await assertNoDiagnostics(
+      '''import 'package:throws/throws.dart';
+$coreStubs
+@Throws(errors: {FormatException, RangeError})
+void boom() {
+  throw FormatException('x');
+}
+
+void f() {
+  try {
+    try {
+      boom();
+    } on FormatException {
+      // handle
+    }
+  } on RangeError {
     // handle
   }
 }''',

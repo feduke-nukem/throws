@@ -6,7 +6,6 @@ import 'package:analyzer/dart/ast/visitor.dart';
 import 'package:analyzer/error/error.dart';
 import 'package:throws_plugin/src/data/throws_annotation.dart';
 import 'package:throws_plugin/src/utils/analysis_cache.dart';
-import 'package:throws_plugin/src/utils/extensions/function_summary_x.dart';
 
 class MissingThrowsAnnotation extends AnalysisRule {
   static const LintCode _code = LintCode(
@@ -45,18 +44,14 @@ class _Visitor extends SimpleAstVisitor<void> {
 
   @override
   void visitCompilationUnit(CompilationUnit node) {
-    final summaries = AnalysisCache.throwsSummaries(node);
+    final analysis = AnalysisCache.analysis(node);
 
-    for (final summary in summaries) {
-      final shouldReport =
-          (!summary.hasThrowsAnnotation && summary.hasUnhandledThrow) &&
-          (!summary.hasAnnotatedSuper && !summary.isCoveredByInheritedThrows);
-
-      if (!shouldReport) {
-        continue;
+    for (final summary in analysis.summaries) {
+      if (summary.annotation == null &&
+          summary.inherited == null &&
+          summary.hasUnhandledThrow) {
+        rule.reportAtToken(summary.nameToken);
       }
-
-      rule.reportAtToken(summary.nameToken);
     }
   }
 }

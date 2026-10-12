@@ -68,7 +68,9 @@ class UnusedThrowsAnnotationFix extends ResolvedCorrectionProducer {
       }
 
       await builder.addDartFileEdit(file, (builder) {
-        builder.addDeletion(range.node(annotation));
+        builder.addDeletion(
+          range.startStart(annotation, annotation.endToken.next!),
+        );
       });
     } catch (_) {
       return;
@@ -83,12 +85,12 @@ class _Visitor extends SimpleAstVisitor<void> {
 
   @override
   void visitCompilationUnit(CompilationUnit node) {
-    final summaries = AnalysisCache.throwsSummaries(node);
+    final analysis = AnalysisCache.analysis(node);
 
-    for (final summary in summaries) {
-      if (summary.hasThrowsAnnotation &&
-          !summary.hasUnhandledThrow &&
-          !summary.hasUnhandledThrowingCall &&
+    for (final summary in analysis.summaries) {
+      if (summary.annotation != null &&
+          summary.sites.isEmpty &&
+          !summary.hasUntrackedThrow &&
           !summary.isAbstractOrExternal) {
         rule.reportAtToken(summary.nameToken);
       }
