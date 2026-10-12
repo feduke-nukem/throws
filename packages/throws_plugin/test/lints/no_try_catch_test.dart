@@ -623,6 +623,78 @@ void f() {
     );
   }
 
+  void test_reports_operators() async {
+    const code = r'''import 'package:throws/throws.dart';
+class A {
+  @Throws(errors: {FormatException})
+  A operator +(A other) => throw FormatException();
+
+  @Throws(errors: {FormatException})
+  A operator -() => throw FormatException();
+
+  @Throws(errors: {FormatException})
+  int operator [](int i) => throw FormatException();
+
+  @Throws(errors: {FormatException})
+  void operator []=(int i, int v) => throw FormatException();
+}
+
+void f(A a) {
+  a + a;
+  -a;
+  a[0];
+  a[1] = 2;
+}''';
+    await assertDiagnostics(code, [
+      lint(code.indexOf('a + a'), 5),
+      lint(code.indexOf('-a;'), 2),
+      lint(code.indexOf('a[0]'), 4),
+      lint(code.indexOf('a[1]'), 4),
+    ]);
+  }
+
+  void test_reports_compound_index_read_once() async {
+    const code = r'''import 'package:throws/throws.dart';
+class A {
+  @Throws(errors: {FormatException})
+  int operator [](int i) => throw FormatException();
+
+  void operator []=(int i, int v) {}
+}
+
+void f(A a) {
+  a[0] += 1;
+}''';
+    await assertDiagnostics(code, [lint(code.indexOf('a[0]'), 4)]);
+  }
+
+  void test_reports_setter_once() async {
+    const code = r'''import 'package:throws/throws.dart';
+class A {
+  @Throws(errors: {FormatException})
+  set value(int v) => throw FormatException();
+}
+
+void f(A a) {
+  a.value = 1;
+}''';
+    await assertDiagnostics(code, [lint(code.indexOf('a.value'), 7)]);
+  }
+
+  void test_reports_compound_assignment_getter_once() async {
+    const code = r'''import 'package:throws/throws.dart';
+class A {
+  @Throws(errors: {FormatException})
+  int get count => throw FormatException();
+  set count(int v) {}
+}
+
+void f(A a) {
+  a.count += 1;
+}''';
+    await assertDiagnostics(code, [lint(code.indexOf('a.count'), 7)]);
+  }
+
   void test_reports_unawaited_future_in_try() async {
     const code = '''$_asyncBoom
 Future<void> f() async {

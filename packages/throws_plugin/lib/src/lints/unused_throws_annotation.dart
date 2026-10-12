@@ -61,20 +61,16 @@ class UnusedThrowsAnnotationFix extends ResolvedCorrectionProducer {
 
   @override
   Future<void> compute(ChangeBuilder builder) async {
-    try {
-      final annotation = node.findThrowsAnnotation();
-      if (annotation == null) {
-        return;
-      }
-
-      await builder.addDartFileEdit(file, (builder) {
-        builder.addDeletion(
-          range.startStart(annotation, annotation.endToken.next!),
-        );
-      });
-    } catch (_) {
+    final annotation = node.findThrowsAnnotation();
+    if (annotation == null) {
       return;
     }
+
+    await builder.addDartFileEdit(file, (builder) {
+      builder.addDeletion(
+        range.startStart(annotation, annotation.endToken.next!),
+      );
+    });
   }
 }
 

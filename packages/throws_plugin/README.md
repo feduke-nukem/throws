@@ -107,5 +107,9 @@ A future stored in a variable and awaited later is not tracked.
 
 ## Limitations
 
+- Casts (`as`) and null checks (`!`) are not treated as throwing: they throw
+  `TypeError`, a programming error.
+- A `catch` that may `rethrow` (even conditionally) does not count as handling.
+
 - Analysis is best-effort and depends on available type information.
 - SDK/dependency coverage depends on map data (prebuilt or collected).

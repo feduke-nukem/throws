@@ -84,43 +84,39 @@ class NoTryCatchFix extends ResolvedCorrectionProducer {
 
   @override
   Future<void> compute(ChangeBuilder builder) async {
-    try {
-      final statement = _wrappableStatement(node);
-      if (statement == null) {
-        return;
-      }
-
-      final errors = _uncoveredErrors(unit, statement);
-      if (errors.isEmpty) {
-        return;
-      }
-
-      final replacementRange = utils.getLinesRange(range.node(statement));
-      final indent = utils.getLinePrefix(replacementRange.offset);
-      final types = errors.sortedTypes;
-      await builder.addDartFileEdit(file, (builder) {
-        builder.addReplacement(replacementRange, (builder) {
-          builder.writeln('${indent}try {');
-          builder.writeln('$indent  ${statement.toSource().trim()}');
-          builder.write('$indent}');
-          if (types.isEmpty) {
-            builder.writeln(' on Object catch (e, stackTrace) {');
-            builder.writeln('$indent  // TODO: handle error');
-            builder.write('$indent}');
-          }
-          for (final type in types) {
-            builder.write(' on ');
-            builder.writeType(type);
-            builder.writeln(' catch (e, stackTrace) {');
-            builder.writeln('$indent  // TODO: handle error');
-            builder.write('$indent}');
-          }
-          builder.writeln();
-        });
-      });
-    } catch (_) {
+    final statement = _wrappableStatement(node);
+    if (statement == null) {
       return;
     }
+
+    final errors = _uncoveredErrors(unit, statement);
+    if (errors.isEmpty) {
+      return;
+    }
+
+    final replacementRange = utils.getLinesRange(range.node(statement));
+    final indent = utils.getLinePrefix(replacementRange.offset);
+    final types = errors.sortedTypes;
+    await builder.addDartFileEdit(file, (builder) {
+      builder.addReplacement(replacementRange, (builder) {
+        builder.writeln('${indent}try {');
+        builder.writeln('$indent  ${statement.toSource().trim()}');
+        builder.write('$indent}');
+        if (types.isEmpty) {
+          builder.writeln(' on Object catch (e, stackTrace) {');
+          builder.writeln('$indent  // TODO: handle error');
+          builder.write('$indent}');
+        }
+        for (final type in types) {
+          builder.write(' on ');
+          builder.writeType(type);
+          builder.writeln(' catch (e, stackTrace) {');
+          builder.writeln('$indent  // TODO: handle error');
+          builder.write('$indent}');
+        }
+        builder.writeln();
+      });
+    });
   }
 }
 
@@ -142,26 +138,22 @@ class NoTryCatchWithDefaultFix extends ResolvedCorrectionProducer {
 
   @override
   Future<void> compute(ChangeBuilder builder) async {
-    try {
-      final statement = _wrappableStatement(node);
-      if (statement == null || _uncoveredErrors(unit, statement).isEmpty) {
-        return;
-      }
-
-      final replacementRange = utils.getLinesRange(range.node(statement));
-      final indent = utils.getLinePrefix(replacementRange.offset);
-      await builder.addDartFileEdit(file, (builder) {
-        builder.addReplacement(replacementRange, (builder) {
-          builder.writeln('${indent}try {');
-          builder.writeln('$indent  ${statement.toSource().trim()}');
-          builder.writeln('$indent} on Object catch (e, stackTrace) {');
-          builder.writeln('$indent  // TODO: handle error');
-          builder.writeln('$indent}');
-        });
-      });
-    } catch (_) {
+    final statement = _wrappableStatement(node);
+    if (statement == null || _uncoveredErrors(unit, statement).isEmpty) {
       return;
     }
+
+    final replacementRange = utils.getLinesRange(range.node(statement));
+    final indent = utils.getLinePrefix(replacementRange.offset);
+    await builder.addDartFileEdit(file, (builder) {
+      builder.addReplacement(replacementRange, (builder) {
+        builder.writeln('${indent}try {');
+        builder.writeln('$indent  ${statement.toSource().trim()}');
+        builder.writeln('$indent} on Object catch (e, stackTrace) {');
+        builder.writeln('$indent  // TODO: handle error');
+        builder.writeln('$indent}');
+      });
+    });
   }
 }
 

@@ -28,38 +28,34 @@ class ThrowsAnnotationMismatchFix extends ResolvedCorrectionProducer {
 
   @override
   Future<void> compute(ChangeBuilder builder) async {
-    try {
-      final functionNode = node.enclosingFunction;
-      final summary = AnalysisCache.analysis(unit).summaryFor(functionNode);
-      final targetAnnotation = functionNode == null
-          ? null
-          : findThrowsAnnotation(functionNode.metadata);
-      if (summary == null || targetAnnotation == null) {
-        return;
-      }
-
-      final types = summary.escaping.sortedTypes;
-      final reason = _reasonFromAnnotation(targetAnnotation);
-      final reasonStr = reason != null
-          ? 'reason: ${_stringLiteral(reason)}, '
-          : '';
-
-      await builder.addDartFileEdit(file, (builder) {
-        builder.addReplacement(range.node(targetAnnotation), (builder) {
-          if (types.isNotEmpty) {
-            builder.write(
-              '@${ThrowsAnnotation.nameCapitalized}(${reasonStr}errors: {',
-            );
-            writeTypeList(builder, types);
-            builder.write('})');
-          } else {
-            builder.write('@${ThrowsAnnotation.name}');
-          }
-        });
-      });
-    } catch (_) {
+    final functionNode = node.enclosingFunction;
+    final summary = AnalysisCache.analysis(unit).summaryFor(functionNode);
+    final targetAnnotation = functionNode == null
+        ? null
+        : findThrowsAnnotation(functionNode.metadata);
+    if (summary == null || targetAnnotation == null) {
       return;
     }
+
+    final types = summary.escaping.sortedTypes;
+    final reason = _reasonFromAnnotation(targetAnnotation);
+    final reasonStr = reason != null
+        ? 'reason: ${_stringLiteral(reason)}, '
+        : '';
+
+    await builder.addDartFileEdit(file, (builder) {
+      builder.addReplacement(range.node(targetAnnotation), (builder) {
+        if (types.isNotEmpty) {
+          builder.write(
+            '@${ThrowsAnnotation.nameCapitalized}(${reasonStr}errors: {',
+          );
+          writeTypeList(builder, types);
+          builder.write('})');
+        } else {
+          builder.write('@${ThrowsAnnotation.name}');
+        }
+      });
+    });
   }
 }
 

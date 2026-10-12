@@ -477,6 +477,43 @@ class _SiteCollector extends RecursiveAstVisitor<void> {
     super.visitPrefixedIdentifier(node);
   }
 
+  @override
+  void visitIndexExpression(IndexExpression node) {
+    // Null for assignment targets: those go through visitAssignmentExpression.
+    _call(node, node.element, node);
+    super.visitIndexExpression(node);
+  }
+
+  @override
+  void visitBinaryExpression(BinaryExpression node) {
+    _call(node, node.element, node);
+    super.visitBinaryExpression(node);
+  }
+
+  @override
+  void visitPrefixExpression(PrefixExpression node) {
+    _call(node, node.element, node);
+    super.visitPrefixExpression(node);
+  }
+
+  @override
+  void visitPostfixExpression(PostfixExpression node) {
+    _call(node, node.element, node);
+    super.visitPostfixExpression(node);
+  }
+
+  /// Setters, `[]=`, and the read and operator of compound assignments.
+  @override
+  void visitAssignmentExpression(AssignmentExpression node) {
+    final target = node.leftHandSide;
+    if (node.operator.type != TokenType.EQ) {
+      _call(target, node.readElement, node);
+      _call(node, node.element, node);
+    }
+    _call(target, node.writeElement, node);
+    super.visitAssignmentExpression(node);
+  }
+
   /// Getter read through implicit `this` or a top-level getter.
   @override
   void visitSimpleIdentifier(SimpleIdentifier node) {

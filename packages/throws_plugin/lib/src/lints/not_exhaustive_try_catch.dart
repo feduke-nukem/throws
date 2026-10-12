@@ -84,44 +84,40 @@ class NotExhaustiveTryCatchFix extends ResolvedCorrectionProducer {
 
   @override
   Future<void> compute(ChangeBuilder builder) async {
-    try {
-      final tryStatement = node.thisOrAncestorOfType<TryStatement>();
-      if (tryStatement == null || tryStatement.catchClauses.isEmpty) {
-        return;
-      }
-
-      final analysis = AnalysisCache.analysis(unit);
-      final summary = analysis.summaryFor(tryStatement.enclosingFunction);
-      if (summary == null) {
-        return;
-      }
-
-      final missing = <DartType>{};
-      for (final site in summary.sitesWithin(tryStatement.body)) {
-        if (site.isCall) {
-          missing.addAll(summary.uncovered(site, analysis.typeSystem).types);
-        }
-      }
-      if (missing.isEmpty) {
-        return;
-      }
-
-      final lastCatch = tryStatement.catchClauses.last;
-      final indent = utils.getLinePrefix(lastCatch.offset);
-      await builder.addDartFileEdit(file, (builder) {
-        builder.addInsertion(lastCatch.end, (builder) {
-          for (final type in ErrorSet(missing).sortedTypes) {
-            builder.write(' on ');
-            builder.writeType(type);
-            builder.writeln(' catch (e, stackTrace) {');
-            builder.writeln('$indent  // TODO: handle error');
-            builder.write('$indent}');
-          }
-        });
-      });
-    } catch (_) {
+    final tryStatement = node.thisOrAncestorOfType<TryStatement>();
+    if (tryStatement == null || tryStatement.catchClauses.isEmpty) {
       return;
     }
+
+    final analysis = AnalysisCache.analysis(unit);
+    final summary = analysis.summaryFor(tryStatement.enclosingFunction);
+    if (summary == null) {
+      return;
+    }
+
+    final missing = <DartType>{};
+    for (final site in summary.sitesWithin(tryStatement.body)) {
+      if (site.isCall) {
+        missing.addAll(summary.uncovered(site, analysis.typeSystem).types);
+      }
+    }
+    if (missing.isEmpty) {
+      return;
+    }
+
+    final lastCatch = tryStatement.catchClauses.last;
+    final indent = utils.getLinePrefix(lastCatch.offset);
+    await builder.addDartFileEdit(file, (builder) {
+      builder.addInsertion(lastCatch.end, (builder) {
+        for (final type in ErrorSet(missing).sortedTypes) {
+          builder.write(' on ');
+          builder.writeType(type);
+          builder.writeln(' catch (e, stackTrace) {');
+          builder.writeln('$indent  // TODO: handle error');
+          builder.write('$indent}');
+        }
+      });
+    });
   }
 }
 
@@ -143,29 +139,25 @@ class NotExhaustiveTryCatchDefaultFix extends ResolvedCorrectionProducer {
 
   @override
   Future<void> compute(ChangeBuilder builder) async {
-    try {
-      final tryStatement = node.thisOrAncestorOfType<TryStatement>();
-      if (tryStatement == null || tryStatement.catchClauses.isEmpty) {
-        return;
-      }
-      if (tryStatement.catchClauses.any(
-        (clause) => !alwaysRethrows(clause) && catchesAll(clause),
-      )) {
-        return;
-      }
-
-      final lastCatch = tryStatement.catchClauses.last;
-      final indent = utils.getLinePrefix(lastCatch.offset);
-      await builder.addDartFileEdit(file, (builder) {
-        builder.addInsertion(lastCatch.end, (builder) {
-          builder.write(' on Object catch (e, stackTrace) {');
-          builder.writeln();
-          builder.writeln('$indent  // TODO: handle error');
-          builder.write('$indent}');
-        });
-      });
-    } catch (_) {
+    final tryStatement = node.thisOrAncestorOfType<TryStatement>();
+    if (tryStatement == null || tryStatement.catchClauses.isEmpty) {
       return;
     }
+    if (tryStatement.catchClauses.any(
+      (clause) => !alwaysRethrows(clause) && catchesAll(clause),
+    )) {
+      return;
+    }
+
+    final lastCatch = tryStatement.catchClauses.last;
+    final indent = utils.getLinePrefix(lastCatch.offset);
+    await builder.addDartFileEdit(file, (builder) {
+      builder.addInsertion(lastCatch.end, (builder) {
+        builder.write(' on Object catch (e, stackTrace) {');
+        builder.writeln();
+        builder.writeln('$indent  // TODO: handle error');
+        builder.write('$indent}');
+      });
+    });
   }
 }

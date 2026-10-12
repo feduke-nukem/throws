@@ -25,38 +25,34 @@ class MissingThrowsAnnotationFix extends ResolvedCorrectionProducer {
 
   @override
   Future<void> compute(ChangeBuilder builder) async {
-    try {
-      final functionNode = node.enclosingFunction;
-      final summary = AnalysisCache.analysis(unit).summaryFor(functionNode);
-      if (functionNode == null ||
-          summary == null ||
-          summary.annotation != null ||
-          summary.sites.isEmpty) {
-        return;
-      }
-
-      final types = summary.escaping.sortedTypes;
-      final metadata = functionNode.metadata;
-      final offset = functionNode.insertOffset(metadata);
-      final indent = utils.getLinePrefix(offset);
-      await builder.addDartFileEdit(file, (builder) {
-        final throwsRef = builder.importThrows(
-          isCapitalized: types.isNotEmpty,
-        );
-        builder.addInsertion(offset, (builder) {
-          builder.write(indent);
-          if (types.isNotEmpty) {
-            builder.write('@$throwsRef(reason: \'reason\', errors: {');
-            writeTypeList(builder, types);
-            builder.write('})');
-          } else {
-            builder.write('@$throwsRef');
-          }
-          builder.writeln();
-        });
-      });
-    } catch (_) {
+    final functionNode = node.enclosingFunction;
+    final summary = AnalysisCache.analysis(unit).summaryFor(functionNode);
+    if (functionNode == null ||
+        summary == null ||
+        summary.annotation != null ||
+        summary.sites.isEmpty) {
       return;
     }
+
+    final types = summary.escaping.sortedTypes;
+    final metadata = functionNode.metadata;
+    final offset = functionNode.insertOffset(metadata);
+    final indent = utils.getLinePrefix(offset);
+    await builder.addDartFileEdit(file, (builder) {
+      final throwsRef = builder.importThrows(
+        isCapitalized: types.isNotEmpty,
+      );
+      builder.addInsertion(offset, (builder) {
+        builder.write(indent);
+        if (types.isNotEmpty) {
+          builder.write('@$throwsRef(reason: \'reason\', errors: {');
+          writeTypeList(builder, types);
+          builder.write('})');
+        } else {
+          builder.write('@$throwsRef');
+        }
+        builder.writeln();
+      });
+    });
   }
 }

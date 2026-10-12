@@ -6,11 +6,12 @@
 - Add `track` option in throws.yaml to check `exception`, `error` or both.
 - Propagate errors through chains of local unannotated functions.
 - Report getters read through implicit `this`; ignore method tear-offs.
+- Check operators, `[]`, `[]=`, setters and compound assignments.
 - Recognize only `@Throws`/`@throws` from package:throws.
 - Read throws.yaml through the analyzer file system; it is re-read on the next analysis session.
 - Future-returning calls: try/catch counts only with `await`; `catchError`,
   `onError<E>`, `then(onError:)` and `ignore` handle errors.
-- Quick fixes import the error types they insert.
+- Quick fixes import the error types they insert; they no longer hide their own errors.
 - Removing an unused annotation no longer leaves an empty line.
 - Require analyzer ^14.5.0 and Dart ^3.11.0.
 - Regenerate prebuilt dart/flutter maps without names from doc examples and prose.
