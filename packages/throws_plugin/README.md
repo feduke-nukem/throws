@@ -37,6 +37,8 @@ Diagnostics are reported at the call site for unhandled throws.
 
 Assists:
 - Add `@Throws()` or `@throws` to a function.
+- Specify errors: turn `@throws` / `@Throws()` into `@Throws(errors: {...})`
+  with the errors the function throws.
 
 Fixes:
 - `missing_throws_annotation`: add `@Throws` with the inferred errors.
@@ -44,12 +46,17 @@ Fixes:
 - `unused_throws_annotation`: remove the annotation.
 - `no_try_catch`:
   - wrap the statement in try/catch, with a clause per error or one `on Object`
-    clause (`final x = call();` becomes `late final T x; try { x = call(); }`);
+    clause (`final x = call();` becomes `late final T x; try { x = call(); }`,
+    `void f() => call();` becomes a block body);
   - add `await` to a future-returning call inside try/catch;
   - add the errors to the enclosing `@Throws`, or annotate the enclosing
     function.
 - `not_exhaustive_try_catch`: add the missing catch clauses (subtypes before
   supertypes), a default `on Object` clause, or add the errors to `@Throws`.
+- `introduced_throws_in_override`: add the errors to `@Throws` of the
+  overridden member (when it is in your package), or wrap the call in try/catch.
+
+Generated code selects the `reason` and the catch bodies as linked edits.
 
 The annotation fixes for `missing_throws_annotation`,
 `throws_annotation_mismatch` and `unused_throws_annotation` can be applied to

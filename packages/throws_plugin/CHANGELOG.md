@@ -15,6 +15,11 @@
 - New fixes: add `await` to a future call in try/catch; add errors to the
   enclosing `@Throws`.
 - Annotation fixes apply to all diagnostics in a file at once.
+- New fixes for `introduced_throws_in_override`: add errors to the overridden
+  `@Throws`, or wrap in try/catch.
+- Wrap `void f() => call();` in try/catch.
+- New assist: specify the errors of `@throws`.
+- `reason` and catch bodies are linked edits.
 - Wrapping `final x = call();` keeps `x` in scope (`late final`).
 - Missing catch clauses are inserted before clauses for their supertypes.
 - Generated catch clauses have no unused `e`/`stackTrace` variables.

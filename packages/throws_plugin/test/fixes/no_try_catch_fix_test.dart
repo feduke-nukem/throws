@@ -1,5 +1,6 @@
 // ignore_for_file: non_constant_identifier_names
 
+import 'package:test/test.dart';
 import 'package:test_reflective_loader/test_reflective_loader.dart';
 import 'package:throws_plugin/src/lints/no_try_catch.dart';
 
@@ -300,6 +301,102 @@ void f() {
 }
 ''',
     );
+  }
+
+  Future<void> test_selects_handler_bodies() async {
+    final result = await apply(r'''import 'package:throws/throws.dart';
+
+@Throws(errors: {FormatException, ArgumentError})
+void boom() {
+  throw FormatException();
+}
+
+void f() {
+  ^boom();
+}
+''');
+    expect(linkedTexts(result!), [
+      '// TODO: handle error',
+      '// TODO: handle error',
+    ]);
+    expect(lastChange.linkedEditGroups, hasLength(2));
+  }
+
+  Future<void> test_wraps_void_expression_body() async {
+    await assertHasCorrection(
+      r'''import 'package:throws/throws.dart';
+
+@Throws(errors: {FormatException, ArgumentError})
+void boom() {
+  throw FormatException();
+}
+
+class A {
+  void f() => ^boom();
+}
+''',
+      r'''import 'package:throws/throws.dart';
+
+@Throws(errors: {FormatException, ArgumentError})
+void boom() {
+  throw FormatException();
+}
+
+class A {
+  void f() {
+    try {
+      boom();
+    } on ArgumentError {
+      // TODO: handle error
+    } on FormatException {
+      // TODO: handle error
+    }
+  }
+}
+''',
+    );
+  }
+
+  Future<void> test_wraps_async_void_expression_body() async {
+    await assertHasCorrection(
+      r'''
+import 'package:throws/throws.dart';
+
+@Throws(errors: {FormatException})
+Future<void> boom() async {
+  throw FormatException();
+}
+
+Future<void> f() async => await ^boom();
+''',
+      r'''
+import 'package:throws/throws.dart';
+
+@Throws(errors: {FormatException})
+Future<void> boom() async {
+  throw FormatException();
+}
+
+Future<void> f() async {
+  try {
+    await boom();
+  } on FormatException {
+    // TODO: handle error
+  }
+}
+''',
+    );
+  }
+
+  Future<void> test_no_fix_for_non_void_expression_body() async {
+    await assertNoCorrection(r'''
+import 'package:throws/throws.dart';
+
+@Throws(errors: {FormatException})
+int boom() => throw FormatException();
+
+int f() => ^boom();
+''');
   }
 }
 

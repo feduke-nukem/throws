@@ -16,6 +16,9 @@ typedef ProducerGenerator =
 abstract class CorrectionTest extends SingleUnitTest {
   ProducerGenerator get generator;
 
+  /// The change made by the last correction.
+  late SourceChange lastChange;
+
   @override
   void setUp() {
     super.setUp();
@@ -28,7 +31,7 @@ abstract class CorrectionTest extends SingleUnitTest {
 
   /// Code after applying the correction at every `^` marker, or null when
   /// it makes no edits. Several markers emulate "fix all in file".
-  Future<String?> _apply(String code) async {
+  Future<String?> apply(String code) async {
     addTestSource(code);
     final unit = await getResolvedUnit(testFile);
     final positions = parsedTestCode.positions;
@@ -48,15 +51,27 @@ abstract class CorrectionTest extends SingleUnitTest {
       }
       await producer.compute(builder);
     }
-    final edits = builder.sourceChange.getFileEdit(testFile.path)?.edits;
+    lastChange = builder.sourceChange;
+    final edits = lastChange.getFileEdit(testFile.path)?.edits;
     return edits == null ? null : SourceEdit.applySequence(testCode, edits);
   }
 
   Future<void> assertHasCorrection(String code, String expected) async {
-    expect(await _apply(code), normalizeSource(expected));
+    expect(await apply(code), normalizeSource(expected));
   }
 
+  /// Text at each linked edit position of [lastChange] in [result].
+  List<String> linkedTexts(String result) => [
+    for (final group in lastChange.linkedEditGroups)
+      for (final position in group.positions)
+        result.substring(position.offset, position.offset + group.length),
+  ];
+
+  /// [path] content after applying [lastChange] to [original].
+  String changedFile(String path, String original) =>
+      SourceEdit.applySequence(original, lastChange.getFileEdit(path)!.edits);
+
   Future<void> assertNoCorrection(String code) async {
-    expect(await _apply(code), isNull);
+    expect(await apply(code), isNull);
   }
 }

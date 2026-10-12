@@ -3,13 +3,17 @@ import 'package:analyzer/dart/element/type.dart';
 import 'package:analyzer/dart/element/type_system.dart';
 import 'package:analyzer_plugin/utilities/change_builder/change_builder_dart.dart';
 
-/// Writes `on [type] {` with a TODO body. Without a catch variable, so the
-/// generated code has no unused-variable warnings.
+/// Writes `on [type] {` with a TODO body selected as a linked edit. Without a
+/// catch variable, so the generated code has no unused-variable warnings.
+///
+/// [index] keeps linked edit groups of several clauses apart.
 void writeCatchClause(
   DartEditBuilder builder,
   DartType? type,
-  String indent,
-) {
+  String indent, {
+  int index = 0,
+}) {
+  final group = 'HANDLE_$index';
   builder.write('on ');
   if (type == null) {
     builder.write('Object');
@@ -17,7 +21,9 @@ void writeCatchClause(
     builder.writeType(type);
   }
   builder.writeln(' {');
-  builder.writeln('$indent  // TODO: handle error');
+  builder.write('$indent  ');
+  builder.addSimpleLinkedEdit(group, '// TODO: handle error');
+  builder.writeln();
   builder.write('$indent}');
 }
 

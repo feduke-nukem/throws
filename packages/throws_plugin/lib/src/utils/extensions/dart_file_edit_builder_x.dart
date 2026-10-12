@@ -1,3 +1,4 @@
+import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/element/type.dart';
 import 'package:analyzer_plugin/utilities/change_builder/change_builder_dart.dart';
 import 'package:throws_plugin/src/data/throws_annotation.dart';
@@ -43,4 +44,33 @@ void writeTypeList(DartEditBuilder builder, List<DartType> types) {
     }
     builder.writeType(types[i]);
   }
+}
+
+/// The `{...}` set literal passed as `errors:` to [annotation].
+SetOrMapLiteral? errorsLiteral(Annotation annotation) {
+  for (final argument in annotation.arguments?.arguments ?? const []) {
+    if (argument is NamedArgument && argument.name.lexeme == 'errors') {
+      final expression = argument.argumentExpression;
+      return expression is SetOrMapLiteral ? expression : null;
+    }
+  }
+  return null;
+}
+
+/// Appends [types] to the `errors:` [literal].
+void addToErrorsLiteral(
+  DartFileEditBuilder builder,
+  SetOrMapLiteral literal,
+  List<DartType> types,
+) {
+  final elements = literal.elements;
+  builder.addInsertion(
+    elements.isEmpty ? literal.leftBracket.end : elements.last.end,
+    (builder) {
+      if (elements.isNotEmpty) {
+        builder.write(', ');
+      }
+      writeTypeList(builder, types);
+    },
+  );
 }

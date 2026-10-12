@@ -108,7 +108,9 @@ class NotExhaustiveTryCatchFix extends ResolvedCorrectionProducer {
     final lastCatch = tryStatement.catchClauses.last;
     final indent = utils.getLinePrefix(lastCatch.offset);
     await builder.addDartFileEdit(file, (builder) {
-      for (final type in subtypesFirst(missing)) {
+      final types = subtypesFirst(missing);
+      for (var i = 0; i < types.length; i++) {
+        final type = types[i];
         // A clause for a supertype must come after the new one.
         final before = clauseCatching(
           tryStatement,
@@ -117,13 +119,13 @@ class NotExhaustiveTryCatchFix extends ResolvedCorrectionProducer {
         );
         if (before != null) {
           builder.addInsertion(before.offset, (builder) {
-            writeCatchClause(builder, type, indent);
+            writeCatchClause(builder, type, indent, index: i);
             builder.write(' ');
           });
         } else {
           builder.addInsertion(lastCatch.end, (builder) {
             builder.write(' ');
-            writeCatchClause(builder, type, indent);
+            writeCatchClause(builder, type, indent, index: i);
           });
         }
       }

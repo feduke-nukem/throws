@@ -1,6 +1,5 @@
 import 'package:analysis_server_plugin/edit/dart/correction_producer.dart';
 import 'package:analysis_server_plugin/edit/dart/dart_fix_kind_priority.dart';
-import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/element/type.dart';
 import 'package:analyzer_plugin/utilities/change_builder/change_builder_core.dart';
 import 'package:analyzer_plugin/utilities/fixes/fixes.dart';
@@ -49,35 +48,15 @@ class AddToThrowsAnnotationFix extends ResolvedCorrectionProducer {
         errors.addAll(summary.uncovered(site, analysis.typeSystem).types);
       }
     }
-    final literal = _errorsLiteral(annotation);
+    final literal = errorsLiteral(annotation);
     if (errors.isEmpty || literal == null) {
       return;
     }
 
     final types = errors.toList()
       ..sort((a, b) => a.getDisplayString().compareTo(b.getDisplayString()));
-    final elements = literal.elements;
     await builder.addDartFileEdit(file, (builder) {
-      builder.addInsertion(
-        elements.isEmpty ? literal.leftBracket.end : elements.last.end,
-        (builder) {
-          if (elements.isNotEmpty) {
-            builder.write(', ');
-          }
-          writeTypeList(builder, types);
-        },
-      );
+      addToErrorsLiteral(builder, literal, types);
     });
-  }
-
-  /// The `{...}` set literal passed as `errors:`.
-  static SetOrMapLiteral? _errorsLiteral(Annotation annotation) {
-    for (final argument in annotation.arguments?.arguments ?? const []) {
-      if (argument is NamedArgument && argument.name.lexeme == 'errors') {
-        final expression = argument.argumentExpression;
-        return expression is SetOrMapLiteral ? expression : null;
-      }
-    }
-    return null;
   }
 }

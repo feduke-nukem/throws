@@ -151,6 +151,15 @@ void b() {
 ''',
     );
   }
+
+  Future<void> test_selects_reason() async {
+    final result = await apply(r'''
+void ^f() {
+  throw FormatException();
+}
+''');
+    expect(linkedTexts(result!), ["'reason'"]);
+  }
 }
 
 @reflectiveTest

@@ -54,7 +54,9 @@ class MissingThrowsAnnotationFix extends ResolvedCorrectionProducer {
       builder.addInsertion(offset, (builder) {
         builder.write(indent);
         if (types.isNotEmpty) {
-          builder.write('@$throwsRef(reason: \'reason\', errors: {');
+          builder.write('@$throwsRef(reason: ');
+          builder.addSimpleLinkedEdit('REASON', "'reason'");
+          builder.write(', errors: {');
           writeTypeList(builder, types);
           builder.write('})');
         } else {

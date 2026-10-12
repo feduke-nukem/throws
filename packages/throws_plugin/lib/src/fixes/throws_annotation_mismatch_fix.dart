@@ -1,7 +1,9 @@
 import 'package:analysis_server_plugin/edit/dart/correction_producer.dart';
 import 'package:analysis_server_plugin/edit/dart/dart_fix_kind_priority.dart';
 import 'package:analyzer/dart/ast/ast.dart';
+import 'package:analyzer/dart/element/type.dart';
 import 'package:analyzer_plugin/utilities/change_builder/change_builder_core.dart';
+import 'package:analyzer_plugin/utilities/change_builder/change_builder_dart.dart';
 import 'package:analyzer_plugin/utilities/fixes/fixes.dart';
 import 'package:analyzer_plugin/utilities/range_factory.dart';
 import 'package:throws_plugin/src/data/throws_annotation.dart';
@@ -46,26 +48,36 @@ class ThrowsAnnotationMismatchFix extends ResolvedCorrectionProducer {
       return;
     }
 
-    final types = summary.escaping.sortedTypes;
-    final reason = _reasonFromAnnotation(targetAnnotation);
-    final reasonStr = reason != null
-        ? 'reason: ${_stringLiteral(reason)}, '
-        : '';
-
     await builder.addDartFileEdit(file, (builder) {
-      builder.addReplacement(range.node(targetAnnotation), (builder) {
-        if (types.isNotEmpty) {
-          builder.write(
-            '@${ThrowsAnnotation.nameCapitalized}(${reasonStr}errors: {',
-          );
-          writeTypeList(builder, types);
-          builder.write('})');
-        } else {
-          builder.write('@${ThrowsAnnotation.name}');
-        }
-      });
+      replaceThrowsAnnotation(
+        builder,
+        targetAnnotation,
+        summary.escaping.sortedTypes,
+      );
     });
   }
+}
+
+/// Replaces [annotation] with `@Throws(errors: {types})`, keeping its reason,
+/// or with `@throws` when [types] is empty.
+void replaceThrowsAnnotation(
+  DartFileEditBuilder builder,
+  Annotation annotation,
+  List<DartType> types,
+) {
+  final reason = _reasonFromAnnotation(annotation);
+  final reasonStr = reason != null ? 'reason: ${_stringLiteral(reason)}, ' : '';
+  builder.addReplacement(range.node(annotation), (builder) {
+    if (types.isNotEmpty) {
+      builder.write(
+        '@${ThrowsAnnotation.nameCapitalized}(${reasonStr}errors: {',
+      );
+      writeTypeList(builder, types);
+      builder.write('})');
+    } else {
+      builder.write('@${ThrowsAnnotation.name}');
+    }
+  });
 }
 
 String? _reasonFromAnnotation(Annotation annotation) {

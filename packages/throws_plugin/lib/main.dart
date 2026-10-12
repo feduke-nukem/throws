@@ -2,7 +2,9 @@ import 'package:analysis_server_plugin/plugin.dart';
 import 'package:analysis_server_plugin/registry.dart';
 import 'package:throws_plugin/src/assists/add_empty_throws_annotation.dart';
 import 'package:throws_plugin/src/assists/add_throws_annotation.dart';
+import 'package:throws_plugin/src/assists/specify_throws_errors.dart';
 import 'package:throws_plugin/src/fixes/add_await_fix.dart';
+import 'package:throws_plugin/src/fixes/add_to_overridden_throws_fix.dart';
 import 'package:throws_plugin/src/fixes/add_to_throws_annotation_fix.dart';
 import 'package:throws_plugin/src/fixes/missing_throws_annotation_fix.dart';
 import 'package:throws_plugin/src/fixes/throws_annotation_mismatch_fix.dart';
@@ -65,6 +67,14 @@ class ThrowsAnalyzerPlugin extends Plugin {
     );
 
     registry.registerWarningRule(IntroducedThrowsInOverride());
+    registry.registerFixForRule(
+      IntroducedThrowsInOverride.code,
+      AddToOverriddenThrowsFix.new,
+    );
+    registry.registerFixForRule(
+      IntroducedThrowsInOverride.code,
+      NoTryCatchFix.new,
+    );
 
     registry.registerWarningRule(UnusedThrowsAnnotation());
     registry.registerFixForRule(
@@ -74,5 +84,6 @@ class ThrowsAnalyzerPlugin extends Plugin {
 
     registry.registerAssist(AddThrowsAnnotationAssist.new);
     registry.registerAssist(AddEmptyThrowsAnnotationAssist.new);
+    registry.registerAssist(SpecifyThrowsErrorsAssist.new);
   }
 }

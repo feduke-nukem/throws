@@ -83,9 +83,53 @@ abstract class _WrapInTryFix extends ResolvedCorrectionProducer {
   @override
   Future<void> compute(ChangeBuilder builder) async {
     final statement = _wrappableStatement(node);
-    if (statement == null) {
+    if (statement != null) {
+      return _wrapStatement(builder, statement);
+    }
+    final body = _voidExpressionBody(node, unit);
+    if (body != null) {
+      return _wrapExpressionBody(builder, body);
+    }
+  }
+
+  void _writeClauses(DartEditBuilder builder, ErrorSet errors, String indent) {
+    final types = clauseTypes(errors);
+    for (var i = 0; i < types.length; i++) {
+      builder.write(' ');
+      writeCatchClause(builder, types[i], indent, index: i);
+    }
+  }
+
+  /// `void f() => call();` becomes a block body with try/catch.
+  Future<void> _wrapExpressionBody(
+    ChangeBuilder builder,
+    ExpressionFunctionBody body,
+  ) async {
+    final errors = _uncoveredErrors(unit, body);
+    if (errors.isEmpty) {
       return;
     }
+    final indent = utils.getLinePrefix(body.offset);
+    await builder.addDartFileEdit(file, (builder) {
+      builder.addReplacement(range.node(body), (builder) {
+        if (body.keyword case final keyword?) {
+          builder.write('${keyword.lexeme} ');
+        }
+        builder.writeln('{');
+        builder.writeln('$indent  try {');
+        builder.writeln('$indent    ${utils.getNodeText(body.expression)};');
+        builder.write('$indent  }');
+        _writeClauses(builder, errors, '$indent  ');
+        builder.writeln();
+        builder.write('$indent}');
+      });
+    });
+  }
+
+  Future<void> _wrapStatement(
+    ChangeBuilder builder,
+    Statement statement,
+  ) async {
     final errors = _uncoveredErrors(unit, statement);
     if (errors.isEmpty) {
       return;
@@ -107,10 +151,7 @@ abstract class _WrapInTryFix extends ResolvedCorrectionProducer {
         builder.writeln('${indent}try {');
         builder.writeln('$indent  $body');
         builder.write('$indent}');
-        for (final type in clauseTypes(errors)) {
-          builder.write(' ');
-          writeCatchClause(builder, type, indent);
-        }
+        _writeClauses(builder, errors, indent);
         builder.writeln();
       });
     });
@@ -188,16 +229,37 @@ Statement? _wrappableStatement(AstNode node) {
   return statement;
 }
 
-/// Errors from calls in [statement] that the enclosing function does not
-/// declare.
-ErrorSet _uncoveredErrors(CompilationUnit unit, Statement statement) {
+/// The `=> expression` body of the function around [node] when the function
+/// returns nothing, so wrapping it needs no return value in catch clauses.
+ExpressionFunctionBody? _voidExpressionBody(
+  AstNode node,
+  CompilationUnit unit,
+) {
+  final body = node.thisOrAncestorOfType<ExpressionFunctionBody>();
+  final summary = AnalysisCache.analysis(
+    unit,
+  ).summaryFor(node.enclosingFunction);
+  final returnType = summary?.element?.returnType;
+  if (body == null || summary?.body != body || returnType == null) {
+    return null;
+  }
+  final isVoid =
+      returnType is VoidType ||
+      ((returnType.isDartAsyncFuture || returnType.isDartAsyncFutureOr) &&
+          returnType is InterfaceType &&
+          returnType.typeArguments.single is VoidType);
+  return isVoid ? body : null;
+}
+
+/// Errors from calls in [scope] that the enclosing function does not declare.
+ErrorSet _uncoveredErrors(CompilationUnit unit, AstNode scope) {
   final analysis = AnalysisCache.analysis(unit);
-  final summary = analysis.summaryFor(statement.enclosingFunction);
+  final summary = analysis.summaryFor(scope.enclosingFunction);
   if (summary == null) {
     return ErrorSet.empty;
   }
   var errors = ErrorSet.empty;
-  for (final site in summary.sitesWithin(statement)) {
+  for (final site in summary.sitesWithin(scope)) {
     // Wrapping an unawaited future in try/catch would not handle its errors.
     if (site.isUnawaitedFuture) {
       return ErrorSet.empty;
