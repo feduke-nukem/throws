@@ -11,6 +11,7 @@
 - Quick fixes import the error types they insert.
 - Removing an unused annotation no longer leaves an empty line.
 - Require analyzer ^14.5.0 and Dart ^3.11.0.
+- Regenerate prebuilt dart/flutter maps without names from doc examples and prose.
 
 ## 1.1.1
 - Improve introduced_throws_in_override lint

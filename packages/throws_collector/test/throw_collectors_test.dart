@@ -1,39 +1,92 @@
+import 'package:analyzer/dart/analysis/results.dart';
 import 'package:analyzer/dart/analysis/utilities.dart';
 import 'package:analyzer/dart/ast/ast.dart';
+import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 import 'package:throws_collector/src/throw_collectors.dart';
 
-Comment _docOf(String code) {
-  final unit = parseString(content: code).unit;
-  return (unit.declarations.first as FunctionDeclaration).documentationComment!;
+import 'helpers.dart';
+
+/// Errors found in the doc comment of the only function in [code].
+Future<Set<String>> _docErrors(String code) async {
+  final root = await createPackage({'a.dart': code});
+  final result =
+      await resolveFile(path: p.join(root, 'lib', 'a.dart'))
+          as ResolvedUnitResult;
+  final function = result.unit.declarations.whereType<FunctionDeclaration>();
+  return errorsFromComment(function.single.documentationComment!);
 }
 
 void main() {
   group('errorsFromComment', () {
-    test('finds Error and Exception type names', () {
-      final comment = _docOf('''
-/// Throws a [StateError] when empty and FormatException on bad input.
-/// Mentions Errors and exceptions in prose.
+    test('takes resolved references in throwing sentences', () async {
+      expect(
+        await _docErrors('''
+/// Returns the value.
+///
+/// Throws a [StateError] when empty. A [FormatException] is thrown
+/// on bad input.
 void f() {}
-''');
-      expect(errorsFromComment(comment), {'StateError', 'FormatException'});
+'''),
+        {'StateError', 'FormatException'},
+      );
     });
 
-    test('returns nothing for comments without errors', () {
+    test('takes errors that complete the returned future', () async {
       expect(
-        errorsFromComment(_docOf('/// Plain docs.\nvoid f() {}')),
+        await _docErrors('''
+/// Completes the future with a [FormatException] if the input is bad.
+/// The future may complete with a [StateError]. Fails with [ArgumentError].
+void f() {}
+'''),
+        {'FormatException', 'StateError', 'ArgumentError'},
+      );
+    });
+
+    test('ignores references outside throwing sentences', () async {
+      expect(
+        await _docErrors('''
+/// Unlike [StateError], this never fails. See [ArgumentError].
+void f() {}
+'''),
         isEmpty,
       );
     });
-  });
 
-  test('documentationCommentsParser strips the /// prefix', () {
-    final comment = _docOf('/// first\n///\n/// second\nvoid f() {}');
-    expect(documentationCommentsParser(comment.tokens), [
-      ' first',
-      '',
-      ' second',
-    ]);
-    expect(documentationCommentsParser(null), isEmpty);
+    test('ignores unresolved names and code examples', () async {
+      expect(
+        await _docErrors('''
+/// Throws [RetryException] or SomeException.
+///
+/// ```dart
+/// throw StateError('x');
+/// ```
+void f() {}
+'''),
+        isEmpty,
+      );
+    });
+
+    test('ignores types that are not errors or exceptions', () async {
+      expect(
+        await _docErrors('''
+/// Throws a [String] message.
+void f() {}
+'''),
+        isEmpty,
+      );
+    });
+
+    test('accepts user error types', () async {
+      expect(
+        await _docErrors('''
+class MyError extends Error {}
+
+/// Throws [MyError] if called.
+void f() {}
+'''),
+        {'MyError'},
+      );
+    });
   });
 }

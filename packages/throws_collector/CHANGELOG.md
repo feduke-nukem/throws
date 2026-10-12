@@ -4,6 +4,8 @@
 - **Breaking:** constructors are keyed `Class.new` / `Class.named`.
 - Require analyzer ^14.5.0 and Dart ^3.11.0.
 - Record the static type of thrown variables instead of the variable name.
+- Doc comments count only `[References]` the analyzer resolves to `Error` or
+  `Exception` subtypes, in sentences about throwing or failing futures.
 - `run` and `parseArgs` accept an optional `workingDirectory`.
 
 ## 2.2.0+1

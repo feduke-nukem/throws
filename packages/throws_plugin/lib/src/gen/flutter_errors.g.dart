@@ -1,5 +1,11 @@
 const Map<String, Map<String, List<String>>> flutterErrors = {
+  'package:flutter/src/animation/animation_controller.dart': {
+    'AnimationController.animateWith': ['TickerCanceled'],
+    'AnimationController.stop': ['TickerCanceled'],
+    'AnimationController.value': ['TickerCanceled'],
+  },
   'package:flutter/src/animation/curves.dart': {
+    'Cubic.transformInternal': ['ArgumentError'],
     'ParametricCurve.transformInternal': ['UnimplementedError'],
   },
   'package:flutter/src/animation/tween_sequence.dart': {
@@ -8,31 +14,17 @@ const Map<String, Map<String, List<String>>> flutterErrors = {
   'package:flutter/src/cupertino/interface_level.dart': {
     'CupertinoUserInterfaceLevel.of': ['FlutterError'],
   },
-  'package:flutter/src/foundation/assertions.dart': {
-    'DiagnosticsStackTrace.new': ['FlutterError'],
-    'ErrorSpacer.new': ['FlutterError'],
-    'FlutterError.reportError': ['FlutterError'],
-    'FlutterErrorDetails.exceptionAsString': ['AssertionError'],
-    'FlutterErrorDetails.new': ['FlutterError'],
-    'debugPrintStack': ['FlutterError'],
-  },
   'package:flutter/src/foundation/basic_types.dart': {
     'CachingIterable.elementAt': ['IndexError'],
   },
   'package:flutter/src/foundation/binding.dart': {
-    'BindingBase.debugCheckZone': ['AssertionError', 'FlutterError'],
-  },
-  'package:flutter/src/foundation/change_notifier.dart': {
-    'ChangeNotifier.notifyListeners': ['FlutterError'],
+    'BindingBase.debugCheckZone': ['AssertionError'],
   },
   'package:flutter/src/foundation/collections.dart': {
     'mergeSort': ['TypeError'],
   },
   'package:flutter/src/foundation/diagnostics.dart': {
     'DiagnosticsNode.toTimelineArguments': ['FlutterError'],
-  },
-  'package:flutter/src/foundation/memory_allocations.dart': {
-    'FlutterMemoryAllocations.dispatchObjectEvent': ['FlutterError'],
   },
   'package:flutter/src/foundation/platform.dart': {
     'debugDefaultTargetPlatformOverride': ['FlutterError'],
@@ -44,9 +36,6 @@ const Map<String, Map<String, List<String>>> flutterErrors = {
     'FlutterTimeline.debugCollect': ['StateError'],
     'FlutterTimeline.debugCollectionEnabled': ['StateError'],
     'FlutterTimeline.debugReset': ['StateError'],
-  },
-  'package:flutter/src/gestures/binding.dart': {
-    'FlutterErrorDetailsForPointerEventDispatcher.new': ['FlutterError'],
   },
   'package:flutter/src/gestures/pointer_router.dart': {
     'PointerRouter.debugGlobalRouteCount': ['UnsupportedError'],
@@ -66,21 +55,14 @@ const Map<String, Map<String, List<String>>> flutterErrors = {
     'ThemeData.copyWith': ['ArgumentError'],
     'ThemeData.new': ['ArgumentError'],
   },
-  'package:flutter/src/painting/box_border.dart': {
-    'BoxBorder.lerp': ['FlutterError'],
-  },
   'package:flutter/src/painting/decoration.dart': {
     'Decoration.getClipPath': ['UnsupportedError'],
   },
   'package:flutter/src/painting/image_cache.dart': {
     'ImageCache.putIfAbsent': ['Object'],
   },
-  'package:flutter/src/painting/image_provider.dart': {
-    'ImageProvider.obtainCacheStatus': ['FlutterError'],
-  },
   'package:flutter/src/painting/image_stream.dart': {
     'ImageStreamCompleter.reportError': ['FlutterError'],
-    'OneFrameImageStreamCompleter.new': ['FlutterError'],
   },
   'package:flutter/src/painting/text_painter.dart': {
     'TextPainter.debugDisposed': ['StateError'],
@@ -113,12 +95,8 @@ const Map<String, Map<String, List<String>>> flutterErrors = {
     'FontLoader.addFont': ['StateError'],
     'FontLoader.load': ['StateError'],
   },
-  'package:flutter/src/services/haptic_feedback.dart': {
-    'HapticFeedback.errorNotification': ['UINotificationFeedbackTypeError'],
-  },
   'package:flutter/src/services/message_codec.dart': {
     'MethodCodec.decodeEnvelope': ['PlatformException'],
-    'MethodCodec.encodeErrorEnvelope': ['PlatformException'],
   },
   'package:flutter/src/services/message_codecs.dart': {
     'JSONMethodCodec.decodeEnvelope': ['FormatException', 'PlatformException'],
@@ -134,19 +112,7 @@ const Map<String, Map<String, List<String>>> flutterErrors = {
     'StandardMethodCodec.decodeMethodCall': ['FormatException'],
   },
   'package:flutter/src/services/platform_channel.dart': {
-    'EventChannel.receiveBroadcastStream': [
-      'FlutterError',
-      'PlatformException',
-    ],
-    'MethodChannel.invokeMethod': [
-      'ArgumentError',
-      'FlutterError',
-      'MissingPluginException',
-      'MusicalException',
-      'NSError',
-      'PlatformException',
-      'TypeError',
-    ],
+    'MethodChannel.invokeMethod': ['TypeError'],
     'MethodChannel.setMethodCallHandler': [
       'MissingPluginException',
       'PlatformException',
@@ -171,9 +137,6 @@ const Map<String, Map<String, List<String>>> flutterErrors = {
   'package:flutter/src/services/sensitive_content.dart': {
     'SensitiveContentService.getContentSensitivity': ['UnsupportedError'],
   },
-  'package:flutter/src/widgets/actions.dart': {
-    'Action.notifyActionListeners': ['FlutterError'],
-  },
   'package:flutter/src/widgets/async.dart': {
     'AsyncSnapshot.requireData': ['StateError'],
   },
@@ -192,8 +155,6 @@ const Map<String, Map<String, List<String>>> flutterErrors = {
   },
   'package:flutter/src/widgets/framework.dart': {
     'Element.inflateWidget': ['Object'],
-    'ErrorWidget.new': ['FlutterError'],
-    'ErrorWidget.withDetails': ['FlutterError'],
     'ParentDataElement.debugParentDataType': ['UnsupportedError'],
   },
   'package:flutter/src/widgets/list_wheel_scroll_view.dart': {
