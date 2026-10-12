@@ -162,7 +162,7 @@ stay inside it.
 function's own errors. Lazy members (`map`, `where`, ...) throw when iterated,
 but their callback's errors are reported at the call.
 
-## Futures
+## Futures and streams
 
 Errors of a call that returns a `Future` arrive asynchronously:
 - a surrounding try/catch handles them only if the call is awaited
@@ -170,7 +170,14 @@ Errors of a call that returns a `Future` arrive asynchronously:
 - `.catchError`, `.ignore()` and `.then(..., onError: ...)` handle all of them,
   `.onError<E>` handles subtypes of `E`.
 
-A future stored in a variable and awaited later is not tracked.
+Errors of a call that returns a `Stream` arrive as error events:
+- a surrounding try/catch handles them only through `await for (x in s())`;
+- `.handleError` and `.listen(..., onError: ...)` handle all of them;
+- `.listen` without `onError` leaves them unhandled;
+- getters and methods that return a future (`await s().first`) follow the
+  future rules; `yield* s()` forwards them to the caller.
+
+A future or stream stored in a variable and used later is not tracked.
 
 ## Limitations
 
