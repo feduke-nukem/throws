@@ -61,6 +61,12 @@ class ThrowsAnalyzer {
   /// Unannotated functions of this unit, keyed by element.
   final Map<Element, FunctionSummary> _local = {};
 
+  /// Closures of this unit.
+  final Map<FunctionExpression, FunctionSummary> _closures = {};
+
+  /// Whether a callee is `@rethrows` (or listed in throws.yaml).
+  final Map<Element, bool> _rethrowing = {};
+
   ThrowsAnalyzer._(this._library)
     : _config = ThrowsConfig.of(_library.session),
       _typeSystem = _library.typeSystem;
@@ -79,23 +85,31 @@ class ThrowsAnalyzer {
     final summaries = collector.summaries;
 
     for (final summary in summaries) {
+      final declaration = summary.declaration;
+      if (declaration is FunctionExpression) {
+        _closures[declaration] = summary;
+        summary.rethrown = _isRethrownArgument(declaration);
+        continue;
+      }
       final element = summary.element;
       if (element != null && _declaredErrors(element) == null) {
         _local[element.baseElement] = summary;
       }
     }
 
-    // Local unannotated functions feed their errors to callers in this unit;
-    // repeat until no local function changes what it throws.
-    final localSummaries = _local.values.toSet();
+    // Local unannotated functions and closures feed their errors to callers
+    // in this unit; repeat until none of them changes what it throws.
+    final localSummaries = {..._local.values, ..._closures.values};
     var changed = true;
     for (var pass = 0; changed && pass <= summaries.length; pass++) {
       changed = false;
       for (final summary in summaries) {
         final before = summary.escaping;
+        final untrackedBefore = summary.hasUntrackedThrow;
         _collectSites(summary);
         if (localSummaries.contains(summary) &&
-            !summary.escaping.sameAs(before)) {
+            (!summary.escaping.sameAs(before) ||
+                summary.hasUntrackedThrow != untrackedBefore)) {
           changed = true;
         }
       }
@@ -189,25 +203,133 @@ class ThrowsAnalyzer {
     return _site(summary, node, errors, isCall: false);
   }
 
+  /// Errors of calling [element] from [summary]; null when it does not throw.
+  ErrorSet? _calleeErrors(FunctionSummary summary, Element? element) {
+    final declared = _declaredErrors(element);
+    if (declared != null) {
+      return _tracked(declared, summary);
+    }
+    final local = _local[element?.baseElement];
+    if (local == null) {
+      return null;
+    }
+    if (local.hasUntrackedThrow) {
+      summary.hasUntrackedThrow = true;
+    }
+    return local.escaping;
+  }
+
+  /// Whether [element] or a member it overrides is `@rethrows` or listed
+  /// under `rethrows` in throws.yaml.
+  bool _rethrows(Element? element) {
+    final executable = element is ExecutableElement
+        ? element.baseElement
+        : null;
+    if (executable == null) {
+      return false;
+    }
+    return _rethrowing[executable] ??=
+        [
+          executable,
+          ...overriddenMembers(executable),
+        ].any(
+          (member) =>
+              member.metadata.annotations.any(isRethrowsAnnotation) ||
+              _config.isRethrowing(member),
+        );
+  }
+
+  /// Errors that [call] of a `@rethrows` [element] gets from its function
+  /// arguments: closures and tear-offs of known functions.
+  ErrorSet? _rethrownErrors(
+    FunctionSummary summary,
+    Element? element,
+    Expression call,
+  ) {
+    if (!_rethrows(element)) {
+      return null;
+    }
+    final arguments = switch (call) {
+      InvocationExpression(:final argumentList) ||
+      InstanceCreationExpression(
+        :final argumentList,
+      ) => argumentList.arguments,
+      _ => const <Argument>[],
+    };
+    ErrorSet? result;
+    for (final argument in arguments) {
+      final expression = argument.argumentExpression;
+      ErrorSet? errors;
+      if (expression is FunctionExpression) {
+        final closure = _closures[expression];
+        if (closure == null || !closure.rethrown) {
+          continue;
+        }
+        if (closure.hasUntrackedThrow) {
+          summary.hasUntrackedThrow = true;
+        }
+        errors = closure.escaping;
+      } else if (_isFunctionParameter(argument)) {
+        errors = _calleeErrors(summary, _tornOff(expression));
+      }
+      if (errors != null) {
+        result = result?.union(errors) ?? errors;
+      }
+    }
+    return result;
+  }
+
+  /// Whether [closure] is an argument whose errors the call rethrows.
+  bool _isRethrownArgument(FunctionExpression closure) {
+    final parent = closure.parent;
+    final Argument argument = parent is NamedArgument ? parent : closure;
+    final element = switch (argument.parent?.parent) {
+      MethodInvocation(:final methodName) => methodName.element,
+      InstanceCreationExpression(:final constructorName) =>
+        constructorName.element,
+      FunctionExpressionInvocation(:final element) => element,
+      _ => null,
+    };
+    if (!_rethrows(element) || !_isFunctionParameter(argument)) {
+      return false;
+    }
+    // Errors of an async closure stay in its future; a parameter that
+    // returns void drops it.
+    final type = argument.correspondingParameter?.type;
+    return !closure.body.isAsynchronous ||
+        type is! FunctionType ||
+        type.returnType is! VoidType;
+  }
+
+  static bool _isFunctionParameter(Argument argument) {
+    final type = argument.correspondingParameter?.type;
+    return type is FunctionType || (type?.isDartCoreFunction ?? false);
+  }
+
+  /// Function or method torn off by [expression].
+  static ExecutableElement? _tornOff(Expression expression) {
+    final element = switch (expression) {
+      FunctionReference(:final function) => _tornOff(function),
+      Identifier(:final element) => element,
+      PropertyAccess(:final propertyName) => propertyName.element,
+      _ => null,
+    };
+    return element is ExecutableElement && element is! PropertyAccessorElement
+        ? element
+        : null;
+  }
+
   ThrowSite? _callSite(
     FunctionSummary summary,
     AstNode node,
     Element? element,
     Expression call,
   ) {
-    var errors = _declaredErrors(element);
-    if (errors != null) {
-      errors = _tracked(errors, summary);
-    } else {
-      final local = _local[element?.baseElement];
-      if (local == null) {
-        return null;
-      }
-      if (local.hasUntrackedThrow) {
-        summary.hasUntrackedThrow = true;
-      }
-      errors = local.escaping;
-    }
+    final callee = _calleeErrors(summary, element);
+    final rethrown = _rethrownErrors(summary, element, call);
+    var errors = rethrown == null
+        ? callee
+        : callee?.union(rethrown) ?? rethrown;
     if (errors == null || errors.isEmpty) {
       return null;
     }
@@ -317,6 +439,21 @@ class _DeclarationCollector extends RecursiveAstVisitor<void> {
   final List<FunctionSummary> summaries = [];
 
   @override
+  void visitFunctionExpression(FunctionExpression node) {
+    // Bodies of function declarations are summarized with the declaration.
+    if (node.parent is! FunctionDeclaration) {
+      _add(
+        node,
+        node.beginToken,
+        node.body,
+        node.declaredFragment?.element,
+        false,
+      );
+    }
+    super.visitFunctionExpression(node);
+  }
+
+  @override
   void visitFunctionDeclaration(FunctionDeclaration node) {
     _add(
       node,
@@ -380,7 +517,7 @@ class _DeclarationCollector extends RecursiveAstVisitor<void> {
 }
 
 /// Collects throw and throwing call sites of one body, skipping nested
-/// functions (they have their own summaries or run later).
+/// functions and closures (they have their own summaries).
 class _SiteCollector extends RecursiveAstVisitor<void> {
   final ThrowsAnalyzer _analyzer;
   final FunctionSummary _summary;

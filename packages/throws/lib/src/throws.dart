@@ -14,3 +14,28 @@ class Throws {
     this.errors = const {},
   });
 }
+
+/// Marks a function that throws whatever its function-typed parameters
+/// throw, like Swift's `rethrows`.
+///
+/// Callers handle the errors of the closures and tear-offs they pass:
+///
+/// ```dart
+/// @rethrows
+/// T measure<T>(T Function() action) {
+///   final watch = Stopwatch()..start();
+///   try {
+///     return action();
+///   } finally {
+///     print(watch.elapsed);
+///   }
+/// }
+/// ```
+///
+/// Combine with [Throws] for errors the function throws itself.
+const rethrows = Rethrows();
+
+/// Annotation behind [rethrows].
+class Rethrows {
+  const Rethrows();
+}

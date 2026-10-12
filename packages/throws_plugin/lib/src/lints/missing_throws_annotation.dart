@@ -47,7 +47,9 @@ class _Visitor extends SimpleAstVisitor<void> {
     final analysis = AnalysisCache.analysis(node);
 
     for (final summary in analysis.summaries) {
-      if (summary.annotation == null &&
+      // A closure cannot be annotated; its explicit throws are intended.
+      if (!summary.isClosure &&
+          summary.annotation == null &&
           summary.inherited == null &&
           summary.hasUnhandledThrow) {
         rule.reportAtToken(summary.nameToken);

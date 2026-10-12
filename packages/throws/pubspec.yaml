@@ -1,6 +1,6 @@
 name: throws
 description: An annotation for documenting and enforcing throwing functions.
-version: 1.0.0
+version: 1.1.0
 repository: https://github.com/feduke-nukem/throws/tree/main/packages/throws
 homepage: https://github.com/feduke-nukem/throws/tree/main/packages/throws
 screenshots:

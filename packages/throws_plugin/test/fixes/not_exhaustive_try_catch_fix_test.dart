@@ -54,6 +54,51 @@ void f() {
     );
   }
 
+  Future<void> test_adds_missing_clauses_in_closure() async {
+    await assertHasCorrection(
+      r'''import 'package:throws/throws.dart';
+
+@Throws(errors: {FormatException, ArgumentError})
+void boom() {
+  throw FormatException();
+}
+
+void later(void Function() action) {}
+
+void f() {
+  later(() {
+    try {
+      ^boom();
+    } on FormatException {
+      // handle
+    }
+  });
+}
+''',
+      r'''import 'package:throws/throws.dart';
+
+@Throws(errors: {FormatException, ArgumentError})
+void boom() {
+  throw FormatException();
+}
+
+void later(void Function() action) {}
+
+void f() {
+  later(() {
+    try {
+      boom();
+    } on FormatException {
+      // handle
+    } on ArgumentError {
+      // TODO: handle error
+    }
+  });
+}
+''',
+    );
+  }
+
   Future<void> test_no_fix_when_all_caught_by_supertype() async {
     await assertNoCorrection(r'''import 'package:throws/throws.dart';
 

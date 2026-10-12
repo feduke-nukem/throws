@@ -764,7 +764,253 @@ void f() {
 }''';
     await assertDiagnostics(code, [lint(code.lastIndexOf('twoErrors'), 9)]);
   }
+
+  void test_reports_rethrows_call_with_throwing_closure() async {
+    const code = '''$_boom$_run
+void f() {
+  run(() => boom());
+}''';
+    await assertDiagnostics(code, [lint(code.lastIndexOf('run('), 3)]);
+  }
+
+  void test_no_lint_when_rethrows_call_caught() async {
+    await assertNoDiagnostics('''$_boom$_run
+void f() {
+  try {
+    run(() {
+      boom();
+    });
+  } on FormatException {
+    // handle
+  } on ArgumentError {
+    // handle
+  }
+}''');
+  }
+
+  void test_no_lint_when_closure_handles_errors() async {
+    await assertNoDiagnostics('''$_boom$_run
+void f() {
+  run(() {
+    try {
+      boom();
+    } catch (_) {
+      // handle
+    }
+  });
+}''');
+  }
+
+  void test_no_lint_for_rethrows_call_with_safe_closure() async {
+    await assertNoDiagnostics('''$_boom$_run
+void f() {
+  run(() {});
+}''');
+  }
+
+  void test_reports_rethrows_call_with_tear_off() async {
+    const code = '''$_boom$_run
+void f() {
+  run(boom);
+}''';
+    await assertDiagnostics(code, [lint(code.lastIndexOf('run('), 3)]);
+  }
+
+  void test_rethrows_combines_with_own_errors() async {
+    const code = '''$_boom
+class OwnError implements Exception {}
+
+@rethrows
+@Throws(errors: {OwnError})
+void run(void Function() action) {
+  if (action == run) throw OwnError();
+  action();
 }
+
+void f() {
+  run(() {});
+}''';
+    await assertDiagnostics(code, [lint(code.lastIndexOf('run('), 3)]);
+  }
+
+  void test_rethrows_inherited_from_overridden_member() async {
+    const code = '''$_boom
+abstract class Runner {
+  @rethrows
+  void run(void Function() action);
+}
+
+class SyncRunner implements Runner {
+  @override
+  void run(void Function() action) => action();
+}
+
+void f(SyncRunner runner) {
+  runner.run(boom);
+}''';
+    await assertDiagnostics(code, [lint(code.lastIndexOf('run('), 3)]);
+  }
+
+  void test_no_lint_for_closure_to_plain_parameter() async {
+    await assertNoDiagnostics('''$_boom
+void later(void Function() action) {}
+
+void f() {
+  later(() => boom());
+}''');
+  }
+
+  void test_async_closure_to_void_parameter_is_not_rethrown() async {
+    await assertNoDiagnostics('''$_asyncBoom
+@rethrows
+void run(void Function() action) => action();
+
+void f() {
+  run(() async => await asyncBoom());
+}''');
+  }
+
+  void test_async_closure_to_future_parameter_is_rethrown() async {
+    const code = '''$_asyncBoom
+@rethrows
+Future<void> retry(Future<void> Function() action) => action();
+
+Future<void> f() async {
+  try {
+    await retry(() async => await asyncBoom());
+  } on FormatException {
+    // handle
+  }
+  try {
+    retry(() async => await asyncBoom());
+  } on FormatException {
+    // handle
+  }
+}''';
+    await assertDiagnostics(code, [lint(code.lastIndexOf('retry('), 5)]);
+  }
+
+  void test_rethrown_errors_reach_callers_of_local_function() async {
+    const code = '''$_boom$_run
+void helper() {
+  run(() => boom());
+}
+
+void f() {
+  helper();
+}''';
+    await assertDiagnostics(code, [
+      lint(code.lastIndexOf('run('), 3),
+      lint(code.lastIndexOf('helper()'), 6),
+    ]);
+  }
+
+  void test_reports_closure_to_function_parameter() async {
+    const code = '''$_asyncBoom
+@rethrows
+void handle(Function callback) {}
+
+void f() {
+  handle(() async => await asyncBoom());
+}''';
+    await assertDiagnostics(code, [lint(code.lastIndexOf('handle('), 6)]);
+  }
+
+  void test_reports_rethrows_call_with_member_tear_offs() async {
+    const code = '''$_boom$_run
+class Parser {
+  @Throws(errors: {FormatException})
+  void parse() => throw FormatException();
+
+  @Throws(errors: {FormatException})
+  static void check<T>() => throw FormatException();
+}
+
+void f(Parser parser) {
+  run(parser.parse);
+  run(Parser().parse);
+  run(Parser.check<int>);
+}''';
+    await assertDiagnostics(code, [
+      lint(code.indexOf('run(parser'), 3),
+      lint(code.indexOf('run(Parser()'), 3),
+      lint(code.indexOf('run(Parser.check'), 3),
+    ]);
+  }
+
+  void test_getter_argument_is_a_call_not_a_tear_off() async {
+    const code = '''$_boom$_run
+class Holder {
+  @Throws(errors: {FormatException})
+  void Function() get action => throw FormatException();
+}
+
+void f(Holder holder) {
+  run(holder.action);
+}''';
+    await assertDiagnostics(code, [lint(code.lastIndexOf('action'), 6)]);
+  }
+
+  void test_reports_configured_rethrows_member() async {
+    newFile('$testPackageRootPath/throws.yaml', '''
+throws:
+  rethrows:
+    package:test/test.dart: [Runner.run]
+''');
+    const code = '''$_boom
+class Runner {
+  void run(void Function() action) => action();
+}
+
+void f(Runner runner) {
+  runner.run(() => boom());
+}''';
+    await assertDiagnostics(code, [lint(code.lastIndexOf('run('), 3)]);
+  }
+
+  void test_reports_prebuilt_sdk_rethrows() async {
+    newFile('$testPackageRootPath/throws.yaml', '''
+throws:
+  prebuilt:
+    - dart
+''');
+    const code = '''$_boom
+void f(List<int> values) {
+  values.forEach((_) => boom());
+}''';
+    await assertDiagnostics(code, [lint(code.indexOf('forEach'), 7)]);
+  }
+
+  void test_sdk_rethrows_needs_prebuilt() async {
+    await assertNoDiagnostics('''$_boom
+void f(List<int> values) {
+  values.forEach((_) => boom());
+}''');
+  }
+
+  void test_reports_unawaited_then_with_throwing_callback() async {
+    newFile('$testPackageRootPath/throws.yaml', '''
+throws:
+  prebuilt:
+    - dart
+''');
+    const code = '''$_boom
+Future<void> f(Future<int> value) async {
+  try {
+    await value.then((_) => boom());
+    value.then((_) => boom());
+  } catch (_) {
+    // handle
+  }
+}''';
+    await assertDiagnostics(code, [lint(code.lastIndexOf('then'), 4)]);
+  }
+}
+
+const _run = r'''
+@rethrows
+void run(void Function() action) => action();
+''';
 
 const _asyncBoom = r'''import 'package:throws/throws.dart';
 

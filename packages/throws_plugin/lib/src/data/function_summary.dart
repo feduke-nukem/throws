@@ -31,7 +31,7 @@ class ThrowSite {
   });
 }
 
-/// Throwing behaviour of one function, method or constructor.
+/// Throwing behaviour of one function, method, constructor or closure.
 class FunctionSummary {
   final AstNode declaration;
   final Token nameToken;
@@ -45,6 +45,10 @@ class FunctionSummary {
   final ThrowsContract? inherited;
 
   final bool isAbstractOrExternal;
+
+  /// Whether this closure is passed to a `@rethrows` parameter, so its
+  /// errors are thrown by that call instead.
+  bool rethrown = false;
 
   List<ThrowSite> sites = const [];
 
@@ -64,8 +68,13 @@ class FunctionSummary {
     required this.isAbstractOrExternal,
   });
 
+  bool get isClosure => declaration is FunctionExpression;
+
   /// Contract callers rely on: own annotation, else the inherited one.
-  ThrowsContract? get contract => annotation ?? inherited;
+  ///
+  /// A rethrown closure lets every error out to the call it is passed to.
+  ThrowsContract? get contract =>
+      rethrown ? const ThrowsContract({}) : annotation ?? inherited;
 
   bool get hasUnhandledThrow => sites.any((site) => !site.isCall);
 

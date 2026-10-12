@@ -15,6 +15,24 @@ extension AstNodeX on AstNode {
     return null;
   }
 
+  /// Like [enclosingFunction], but stops at a closure.
+  AstNode? get enclosingFunctionOrClosure {
+    AstNode? current = this;
+    while (current != null) {
+      if (current is FunctionExpression &&
+          current.parent is! FunctionDeclaration) {
+        return current;
+      }
+      if (current is FunctionDeclaration ||
+          current is MethodDeclaration ||
+          current is ConstructorDeclaration) {
+        return current;
+      }
+      current = current.parent;
+    }
+    return null;
+  }
+
   Statement? get enclosingStatement {
     AstNode? current = this;
     while (current != null) {
@@ -30,9 +48,7 @@ extension AstNodeX on AstNode {
         return current;
       }
 
-      if (current is FunctionDeclaration ||
-          current is MethodDeclaration ||
-          current is ConstructorDeclaration) {
+      if (current is FunctionBody) {
         return null;
       }
       current = current.parent;
@@ -40,9 +56,10 @@ extension AstNodeX on AstNode {
     return null;
   }
 
+  /// Whether a try statement of the same function or closure encloses this.
   bool get isWithinTryStatement {
     AstNode? current = parent;
-    while (current != null) {
+    while (current != null && current is! FunctionBody) {
       if (current is TryStatement) {
         return true;
       }

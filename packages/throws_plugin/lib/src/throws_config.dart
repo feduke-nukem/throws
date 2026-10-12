@@ -2,6 +2,7 @@ import 'package:analyzer/dart/analysis/session.dart';
 import 'package:analyzer/dart/element/element.dart';
 import 'package:analyzer/dart/element/type.dart';
 import 'package:analyzer/file_system/file_system.dart';
+import 'package:throws_plugin/src/data/dart_sdk_rethrows.dart';
 import 'package:throws_plugin/src/gen/dart_sdk_errors.g.dart';
 import 'package:throws_plugin/src/gen/flutter_errors.g.dart';
 import 'package:yaml/yaml.dart';
@@ -12,9 +13,16 @@ const _configFileName = 'throws.yaml';
 /// `Class.new`, `Class.named` or a top-level `member`).
 typedef ErrorsMap = Map<String, Map<String, List<String>>>;
 
+/// Member paths per library URI.
+typedef MembersList = Map<String, List<String>>;
+
 const _prebuilt = <String, ErrorsMap>{
   'dart': dartSdkErrors,
   'flutter': flutterErrors,
+};
+
+const _prebuiltRethrows = <String, MembersList>{
+  'dart': dartSdkRethrows,
 };
 
 /// User configuration read from throws.yaml at the analysis context root:
@@ -28,10 +36,15 @@ const _prebuilt = <String, ErrorsMap>{
 ///   members:
 ///     dart:core:
 ///       Iterable.single: [StateError]
+///   rethrows:
+///     package:retry/retry.dart: [retry, RetryOptions.retry]
 /// ```
 class ThrowsConfig {
   /// Errors from `members` and `include` files.
   final ErrorsMap members;
+
+  /// Members that throw what their function-typed parameters throw.
+  final MembersList rethrows;
 
   /// Names of prebuilt maps to consult after [members].
   final List<String> prebuilt;
@@ -44,6 +57,7 @@ class ThrowsConfig {
 
   const ThrowsConfig({
     this.members = const {},
+    this.rethrows = const {},
     this.prebuilt = const [],
     this.trackErrors = true,
     this.trackExceptions = true,
@@ -80,6 +94,20 @@ class ThrowsConfig {
       }
     }
     return null;
+  }
+
+  /// Whether [element] is listed under `rethrows` or in a prebuilt list.
+  bool isRethrowing(ExecutableElement element) {
+    final executable = element.baseElement;
+    final member = _memberPath(executable);
+    if (member == null) {
+      return false;
+    }
+    final library = executable.library.uri.toString();
+    return [
+      rethrows,
+      for (final name in prebuilt) ?_prebuiltRethrows[name],
+    ].any((map) => map[library]?.contains(member) ?? false);
   }
 
   /// Whether thrown [type] is checked under the `track` option.
@@ -152,6 +180,7 @@ ThrowsConfig _parse(String content, Folder root) {
   final track = _strings(node['track']);
   return ThrowsConfig(
     members: members,
+    rethrows: _readMembersList(node['rethrows']),
     prebuilt: _strings(node['prebuilt']) ?? const [],
     trackErrors: track == null || track.contains('error'),
     trackExceptions: track == null || track.contains('exception'),
@@ -189,6 +218,17 @@ ErrorsMap _readErrorsMap(Object? node) {
     }
   }
   return result;
+}
+
+/// Reads `library: [member, ...]`; malformed entries are skipped.
+MembersList _readMembersList(Object? node) {
+  if (node is! YamlMap) {
+    return const {};
+  }
+  return {
+    for (final entry in node.entries)
+      if (entry.key case final String library) library: ?_strings(entry.value),
+  };
 }
 
 List<File> _expandInclude(Folder root, String include) {

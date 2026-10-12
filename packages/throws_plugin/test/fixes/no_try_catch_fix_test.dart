@@ -398,6 +398,141 @@ int boom() => throw FormatException();
 int f() => ^boom();
 ''');
   }
+
+  Future<void> test_wraps_statement_inside_closure() async {
+    await assertHasCorrection(
+      r'''import 'package:throws/throws.dart';
+
+@Throws(errors: {FormatException})
+void boom() {
+  throw FormatException();
+}
+
+void later(void Function() action) {}
+
+void f() {
+  later(() {
+    ^boom();
+  });
+}
+''',
+      r'''import 'package:throws/throws.dart';
+
+@Throws(errors: {FormatException})
+void boom() {
+  throw FormatException();
+}
+
+void later(void Function() action) {}
+
+void f() {
+  later(() {
+    try {
+      boom();
+    } on FormatException {
+      // TODO: handle error
+    }
+  });
+}
+''',
+    );
+  }
+
+  Future<void> test_wraps_closure_inside_try() async {
+    await assertHasCorrection(
+      r'''import 'package:throws/throws.dart';
+
+@Throws(errors: {FormatException})
+void boom() {
+  throw FormatException();
+}
+
+void later(void Function() action) {}
+
+void f() {
+  try {
+    later(() {
+      ^boom();
+    });
+  } catch (_) {}
+}
+''',
+      r'''import 'package:throws/throws.dart';
+
+@Throws(errors: {FormatException})
+void boom() {
+  throw FormatException();
+}
+
+void later(void Function() action) {}
+
+void f() {
+  try {
+    later(() {
+      try {
+        boom();
+      } on FormatException {
+        // TODO: handle error
+      }
+    });
+  } catch (_) {}
+}
+''',
+    );
+  }
+
+  Future<void> test_wraps_void_expression_closure() async {
+    await assertHasCorrection(
+      r'''import 'package:throws/throws.dart';
+
+@Throws(errors: {FormatException})
+void boom() {
+  throw FormatException();
+}
+
+void later(void Function() action) {}
+
+void f() {
+  later(() => ^boom());
+}
+''',
+      r'''import 'package:throws/throws.dart';
+
+@Throws(errors: {FormatException})
+void boom() {
+  throw FormatException();
+}
+
+void later(void Function() action) {}
+
+void f() {
+  later(() {
+    try {
+      boom();
+    } on FormatException {
+      // TODO: handle error
+    }
+  });
+}
+''',
+    );
+  }
+
+  Future<void> test_no_fix_for_value_expression_closure() async {
+    await assertNoCorrection(r'''import 'package:throws/throws.dart';
+
+@Throws(errors: {FormatException})
+int boom() {
+  throw FormatException();
+}
+
+void later(int Function() action) {}
+
+void f() {
+  later(() => ^boom());
+}
+''');
+  }
 }
 
 @reflectiveTest
