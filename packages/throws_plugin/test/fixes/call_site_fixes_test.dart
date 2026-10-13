@@ -72,6 +72,41 @@ void f() {
 ''');
   }
 
+  Future<void> test_awaits_future_from_stream_getter() async {
+    await assertHasCorrection(
+      '''$_numbers
+Future<void> f() async {
+  try {
+    ^numbers().first;
+  } on FormatException {
+    // handle
+  }
+}
+''',
+      '''$_numbers
+Future<void> f() async {
+  try {
+    await numbers().first;
+  } on FormatException {
+    // handle
+  }
+}
+''',
+    );
+  }
+
+  Future<void> test_no_fix_for_listened_stream() async {
+    await assertNoCorrection('''$_numbers
+Future<void> f() async {
+  try {
+    ^numbers().listen(null);
+  } on FormatException {
+    // handle
+  }
+}
+''');
+  }
+
   Future<void> test_no_fix_for_chained_call() async {
     await assertNoCorrection('''$_asyncBoom
 Future<void> f() async {
@@ -84,6 +119,15 @@ Future<void> f() async {
 ''');
   }
 }
+
+const _numbers = r'''
+import 'package:throws/throws.dart';
+
+@Throws(errors: {FormatException})
+Stream<int> numbers() async* {
+  throw FormatException();
+}
+''';
 
 const _boom = r'''
 import 'package:throws/throws.dart';

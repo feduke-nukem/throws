@@ -6,6 +6,8 @@
   higher-order members (`forEach`, `map`, `Future.then`, ...) as rethrowing.
 - New lint `no_try_catch_in_closure` for throwing calls in closures whose errors
   are not rethrown, with try/catch and `await` fixes.
+- Stream calls: errors reach try/catch only through `await for`;
+  `handleError` and `listen(onError:)` handle them.
 - Fix: `unused_throws_annotation` no longer depends on the declaration order of
   local functions that throw only untracked errors.
 

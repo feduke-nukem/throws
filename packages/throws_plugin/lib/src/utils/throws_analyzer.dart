@@ -334,33 +334,43 @@ class ThrowsAnalyzer {
       return null;
     }
     final type = call.staticType;
-    final isFuture =
-        type != null && (type.isDartAsyncFuture || type.isDartAsyncFutureOr);
-    if (isFuture) {
-      errors = _withoutFutureHandled(call, errors);
+    final isAsync =
+        type != null &&
+        (type.isDartAsyncFuture ||
+            type.isDartAsyncFutureOr ||
+            type.isDartAsyncStream);
+    if (isAsync) {
+      errors = _withoutAsyncHandled(call, errors);
       if (errors.isEmpty) {
         return null;
       }
     }
-    return _site(summary, node, errors, isCall: true, isFuture: isFuture);
+    return _site(summary, node, errors, isCall: true, isAsync: isAsync);
   }
 
   /// Removes errors handled by `catchError`, `onError<E>`, `then(onError:)`
-  /// or `ignore` chained on the future returned by [call].
-  ErrorSet _withoutFutureHandled(Expression call, ErrorSet errors) {
+  /// or `ignore` chained on the future returned by [call], or by
+  /// `handleError` or `listen(onError:)` chained on its stream.
+  ErrorSet _withoutAsyncHandled(Expression call, ErrorSet errors) {
     final objectType = _library.typeProvider.objectType;
     final types = {...errors.types};
     Expression future = call;
     while (true) {
       final chained = future.parent;
+      // `stream.first` and other getters keep the chain going.
+      if (chained is PropertyAccess && chained.target == future) {
+        future = chained;
+        continue;
+      }
       if (chained is! MethodInvocation || chained.target != future) {
         break;
       }
       future = chained;
       final handled = switch (chained.methodName.name) {
-        'catchError' || 'ignore' => objectType,
         'onError' => chained.typeArgumentTypes?.firstOrNull ?? objectType,
-        'then' when _hasNamedArgument(chained, 'onError') => objectType,
+        'catchError' || 'ignore' || 'handleError' => objectType,
+        'then' ||
+        'listen' when _hasNamedArgument(chained, 'onError') => objectType,
         _ => null,
       };
       if (handled == null) {
@@ -374,6 +384,17 @@ class ThrowsAnalyzer {
     return ErrorSet(types, unknown: errors.unknown);
   }
 
+  /// Whether [statement] is `await for` over a stream that contains [node].
+  static bool _isAwaitForOver(AstNode statement, AstNode node) {
+    if (statement is! ForStatement || statement.awaitKeyword == null) {
+      return false;
+    }
+    final parts = statement.forLoopParts;
+    return parts is ForEachParts &&
+        node.offset >= parts.iterable.offset &&
+        node.end <= parts.iterable.end;
+  }
+
   static bool _hasNamedArgument(MethodInvocation node, String name) =>
       node.argumentList.arguments.any(
         (argument) => argument is NamedArgument && argument.name.lexeme == name,
@@ -385,20 +406,21 @@ class ThrowsAnalyzer {
     AstNode node,
     ErrorSet errors, {
     required bool isCall,
-    bool isFuture = false,
+    bool isAsync = false,
   }) {
     final types = {...errors.types};
     var unknown = errors.unknown;
     var inTryWithCatch = false;
-    // Errors of a future reach a try only through `await`.
-    var awaited = !isFuture;
+    // Errors of a future reach a try only through `await`, errors of a
+    // stream only through `await for` (`yield*` forwards them to the caller).
+    var awaited = !isAsync;
 
     for (
       AstNode? current = node.parent;
       current != null && current != summary.body;
       current = current.parent
     ) {
-      if (current is AwaitExpression) {
+      if (current is AwaitExpression || _isAwaitForOver(current, node)) {
         awaited = true;
       }
       if (!awaited ||
