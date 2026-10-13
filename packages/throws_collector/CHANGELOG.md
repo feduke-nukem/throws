@@ -1,4 +1,6 @@
 ## 3.1.0
+- Ignore doc sentences about throws that do not happen ("where [parse]
+  would throw", "instead of throwing", "rather than").
 - New `dependencies` input: one map per package in pubspec.lock, resolved
   through the project's package config. Unchanged packages are skipped.
 
