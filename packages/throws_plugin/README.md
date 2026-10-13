@@ -16,7 +16,9 @@ plugins:
 
 ## What the plugin enforces
 
-The plugin analyzes resolved AST and:
+The plugin analyzes resolved AST (except files under `test/`,
+`integration_test/` and `test_driver/` of a package, where the test framework
+catches errors) and:
 - Requires @Throws/@throws on functions that throw.
 - Requires callers to handle throwing calls with try/catch or declare errors.
 - Validates that declared errors match actual thrown errors.

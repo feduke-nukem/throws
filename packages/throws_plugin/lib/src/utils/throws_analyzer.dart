@@ -5,6 +5,7 @@ import 'package:analyzer/dart/element/element.dart';
 import 'package:analyzer/dart/element/nullability_suffix.dart';
 import 'package:analyzer/dart/element/type.dart';
 import 'package:analyzer/dart/element/type_system.dart';
+import 'package:analyzer/file_system/file_system.dart';
 import 'package:throws_plugin/src/data/error_set.dart';
 import 'package:throws_plugin/src/data/function_summary.dart';
 import 'package:throws_plugin/src/helpers.dart';
@@ -72,8 +73,13 @@ class ThrowsAnalyzer {
       _typeSystem = _library.typeSystem;
 
   static ThrowsAnalysis analyze(CompilationUnit unit) {
-    final library = unit.declaredFragment?.element;
-    if (library == null) {
+    final fragment = unit.declaredFragment;
+    final library = fragment?.element;
+    if (library == null ||
+        _isTestFile(
+          library.session.resourceProvider,
+          fragment!.source.fullName,
+        )) {
       return ThrowsAnalysis._empty();
     }
     return ThrowsAnalyzer._(library)._analyze(unit);
@@ -518,6 +524,24 @@ class ThrowsAnalyzer {
       inTryWithCatch: inTryWithCatch,
       isUnawaitedFuture: !awaited,
     );
+  }
+}
+
+/// Directories of a package whose code test frameworks run and catch errors
+/// of; not checked.
+const _testDirectories = {'test', 'integration_test', 'test_driver'};
+
+/// Whether [path] is under a test directory of the package that contains it.
+bool _isTestFile(ResourceProvider provider, String path) {
+  final context = provider.pathContext;
+  for (var folder = provider.getFile(path).parent; ; folder = folder.parent) {
+    if (provider.getFile(context.join(folder.path, 'pubspec.yaml')).exists) {
+      final relative = context.relative(path, from: folder.path);
+      return _testDirectories.contains(context.split(relative).first);
+    }
+    if (folder.isRoot) {
+      return false;
+    }
   }
 }
 

@@ -53,6 +53,18 @@ void f() {}
       );
     });
 
+    test('ignores sentences about throws that do not happen', () async {
+      expect(
+        await _docErrors('''
+/// Like parse, but returns `null` where parse would throw a
+/// [FormatException]. Returns `null` instead of throwing a [StateError].
+/// Fails with `null` rather than an [ArgumentError].
+void f() {}
+'''),
+        isEmpty,
+      );
+    });
+
     test('ignores unresolved names and code examples', () async {
       expect(
         await _docErrors('''

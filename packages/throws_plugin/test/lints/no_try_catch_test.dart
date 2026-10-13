@@ -54,6 +54,22 @@ void caller() {
     );
   }
 
+  void test_skips_test_directories() async {
+    const code = '''$_boom
+void caller() {
+  boom();
+}''';
+    for (final dir in ['test', 'integration_test', 'test_driver']) {
+      await assertNoDiagnosticsInFile(
+        newFile('$testPackageRootPath/$dir/a_test.dart', code).path,
+      );
+    }
+    await assertDiagnosticsInFile(
+      newFile('$testPackageRootPath/lib/src/test/a.dart', code).path,
+      [lint(code.lastIndexOf('boom'), 4)],
+    );
+  }
+
   void test_reports_unhandled_throws_call_in_return() async {
     await assertDiagnostics(
       r'''import 'package:throws/throws.dart';
