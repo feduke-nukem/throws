@@ -1112,6 +1112,117 @@ Stream<int> more() async* {
   yield* numbers();
 }''');
   }
+
+  void test_no_lint_for_stored_future_awaited_in_try() async {
+    await assertNoDiagnostics('''$_asyncBoom
+Future<void> f() async {
+  final pending = asyncBoom();
+  try {
+    await pending;
+  } on FormatException {
+    // handle
+  }
+}''');
+  }
+
+  void test_reports_stored_future_at_unhandled_await() async {
+    const code = '''$_asyncBoom
+Future<void> f() async {
+  final pending = asyncBoom();
+  try {
+    await pending;
+  } on FormatException {
+    // handle
+  }
+  await pending;
+}''';
+    await assertDiagnostics(code, [lint(code.lastIndexOf('pending'), 7)]);
+  }
+
+  void test_no_lint_for_stored_future_with_catch_error() async {
+    await assertNoDiagnostics('''$_asyncBoom
+void f() {
+  final pending = asyncBoom();
+  pending.catchError((Object _) {});
+}''');
+  }
+
+  void test_no_lint_for_stored_chain_awaited_in_try() async {
+    await assertNoDiagnostics('''$_asyncBoom
+Future<void> f() async {
+  final pending = asyncBoom().then((_) => 1);
+  try {
+    await pending;
+  } on FormatException {
+    // handle
+  }
+}''');
+  }
+
+  void test_no_lint_for_stored_stream_in_await_for() async {
+    await assertNoDiagnostics('''$_stream
+Future<void> f() async {
+  final values = numbers();
+  try {
+    await for (final _ in values) {}
+  } on FormatException {
+    // handle
+  }
+}''');
+  }
+
+  void test_reports_stored_future_at_call_when_not_awaited() async {
+    const code = '''$_asyncBoom
+void f() {
+  final pending = asyncBoom();
+  print(pending);
+}''';
+    await assertDiagnostics(code, [lint(code.lastIndexOf('asyncBoom'), 9)]);
+  }
+
+  void test_reports_reassigned_future_at_call() async {
+    const code = '''$_asyncBoom
+Future<void> f() async {
+  var pending = asyncBoom();
+  pending = Future.value();
+  try {
+    await pending;
+  } catch (_) {
+    // handle
+  }
+}''';
+    await assertDiagnostics(code, [lint(code.lastIndexOf('asyncBoom'), 9)]);
+  }
+
+  void test_reports_future_read_in_closure_at_call() async {
+    const code = '''$_asyncBoom
+void later(void Function() action) {}
+
+void f() {
+  final pending = asyncBoom();
+  later(() async {
+    try {
+      await pending;
+    } catch (_) {
+      // handle
+    }
+  });
+}''';
+    await assertDiagnostics(code, [lint(code.lastIndexOf('asyncBoom'), 9)]);
+  }
+
+  void test_stored_subscription_is_not_a_stream() async {
+    const code = '''$_stream
+Future<void> f() async {
+  try {
+    final subscription = numbers().listen(null);
+    await subscription.cancel();
+  } catch (_) {
+    // handle
+  }
+}''';
+    await assertDiagnostics(code, [lint(code.lastIndexOf('numbers'), 7)]);
+  }
 }
 
 const _stream = r'''import 'package:throws/throws.dart';

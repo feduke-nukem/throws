@@ -177,7 +177,40 @@ Errors of a call that returns a `Stream` arrive as error events:
 - getters and methods that return a future (`await s().first`) follow the
   future rules; `yield* s()` forwards them to the caller.
 
-A future or stream stored in a variable and used later is not tracked.
+A future or stream stored in a local variable (`final f = load();`) is
+handled where the variable is read: `await f` inside try/catch,
+`f.catchError(...)`, `await for (x in f)`. Diagnostics point at that read. If no
+read awaits or handles it, or the variable is reassigned or read in a closure,
+the call itself is reported. Fields and other non-local storage are not tracked.
+
+## Performance
+
+Measured on Flutter DevTools (`packages/devtools_app`: 487 files, 115k lines in
+`lib`), Apple M4 Max, Flutter 3.49 master, `prebuilt: [dart, flutter]`.
+`dart analyze`, mean of 3 runs:
+
+| Setup | Cold cache | Warm cache |
+| --- | --- | --- |
+| No plugin | 22.3 s | 4.3 s |
+| Empty analyzer plugin (no rules) | 45.0 s | 24.6 s |
+| throws_plugin | 46.4 s | 25.2 s |
+
+Almost all of the extra time comes from loading any analyzer plugin: the
+plugin isolate analyzes the project again. throws_plugin itself takes 120 ms
+for all 487 files (warm JIT; p95 0.8 ms, max 2.4 ms per file) next to 13.6 s of
+resolution. Measure your project with `dart run tool/benchmark.dart <dir>`.
+
+In the IDE (the same analysis server over LSP, warm cache, one run each):
+
+| Setup | First diagnostics | Memory (settled / peak) | Edit to diagnostics |
+| --- | --- | --- | --- |
+| No plugin | 4.4 s | 1.3 / 1.3 GB | 307 ms |
+| Empty analyzer plugin | 36.5 s | 4.2 / 4.8 GB | 328 ms |
+| throws_plugin | 25.0 s | 4.2 / 4.7 GB | 319 ms |
+
+Any analyzer plugin costs about 3 GB of memory and 20–30 s before the first
+diagnostics on a project of this size. Diagnostics after an edit arrive
+10–20 ms later than without a plugin.
 
 ## Limitations
 
