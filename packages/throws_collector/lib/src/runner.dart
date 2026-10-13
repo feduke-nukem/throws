@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'collector.dart';
+import 'dependencies.dart';
 import 'input_resolver.dart';
 import 'map_writer.dart';
 import 'options.dart';
@@ -23,6 +24,10 @@ Future<void> run(List<String> args, {String? workingDirectory}) async {
   Directory(config.outputDir).createSync(recursive: true);
 
   for (final input in config.inputs) {
+    if (input.source case DependenciesInputSource(:final exclude)) {
+      await collectDependencies(config, exclude);
+      continue;
+    }
     stdout.writeln('Resolving input: ${input.outputFile}');
     final resolved = await resolveInput(input, config);
     stdout.writeln('Analyzing: ${resolved.rootPath}');

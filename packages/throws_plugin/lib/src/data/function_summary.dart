@@ -18,8 +18,9 @@ class ThrowSite {
   /// Whether the site is inside the body of a try with catch clauses.
   final bool inTryWithCatch;
 
-  /// Whether this call returns a future that is not awaited, so no
-  /// surrounding try/catch can handle its errors.
+  /// Whether this call returns a future that is not awaited, or a stream
+  /// that is not iterated with `await for`, so no surrounding try/catch can
+  /// handle its errors.
   final bool isUnawaitedFuture;
 
   const ThrowSite({

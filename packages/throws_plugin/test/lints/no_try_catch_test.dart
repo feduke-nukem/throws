@@ -1005,7 +1005,122 @@ Future<void> f(Future<int> value) async {
 }''';
     await assertDiagnostics(code, [lint(code.lastIndexOf('then'), 4)]);
   }
+
+  void test_reports_await_for_without_try() async {
+    const code = '''$_stream
+Future<void> f() async {
+  await for (final _ in numbers()) {}
+}''';
+    await assertDiagnostics(code, [lint(code.lastIndexOf('numbers'), 7)]);
+  }
+
+  void test_no_lint_for_await_for_in_try() async {
+    await assertNoDiagnostics('''$_stream
+Future<void> f() async {
+  try {
+    await for (final _ in numbers()) {}
+  } on FormatException {
+    // handle
+  }
+}''');
+  }
+
+  void test_reports_stream_call_in_await_for_body() async {
+    const code = '''$_stream
+Future<void> f(Stream<int> other) async {
+  try {
+    await for (final _ in other) {
+      numbers().listen(null);
+    }
+  } on FormatException {
+    // handle
+  }
+}''';
+    await assertDiagnostics(code, [lint(code.lastIndexOf('numbers'), 7)]);
+  }
+
+  void test_reports_listened_stream_in_try() async {
+    const code = '''$_stream
+void f() {
+  try {
+    numbers().listen(null);
+  } catch (_) {
+    // handle
+  }
+}''';
+    await assertDiagnostics(code, [lint(code.lastIndexOf('numbers'), 7)]);
+  }
+
+  void test_no_lint_when_listen_has_on_error() async {
+    await assertNoDiagnostics('''$_stream
+void f() {
+  numbers().listen(null, onError: (Object _) {});
+}''');
+  }
+
+  void test_no_lint_when_handle_error_chained() async {
+    await assertNoDiagnostics('''$_stream
+void f() {
+  numbers().handleError((Object _) {}).listen(null);
+}''');
+  }
+
+  void test_stream_getter_future_needs_await() async {
+    const code = '''$_stream
+Future<void> f() async {
+  try {
+    await numbers().first;
+    numbers().first;
+  } on FormatException {
+    // handle
+  }
+  numbers().first.catchError((Object _) => 0);
+}''';
+    await assertDiagnostics(code, [
+      lint(code.lastIndexOf('numbers().first;'), 7),
+    ]);
+  }
+
+  void test_try_around_yield_star_does_not_handle() async {
+    const code = '''$_stream
+Stream<int> more() async* {
+  try {
+    yield* numbers();
+  } on FormatException {
+    // handle
+  }
+}''';
+    await assertDiagnostics(code, [lint(code.lastIndexOf('numbers'), 7)]);
+  }
+
+  void test_sync_for_does_not_await_futures() async {
+    const code = '''$_asyncBoom
+Future<void> f() async {
+  try {
+    for (final _ in [asyncBoom()]) {}
+  } on FormatException {
+    // handle
+  }
+}''';
+    await assertDiagnostics(code, [lint(code.lastIndexOf('asyncBoom'), 9)]);
+  }
+
+  void test_yield_star_passes_errors_to_caller() async {
+    await assertNoDiagnostics('''$_stream
+@Throws(errors: {FormatException})
+Stream<int> more() async* {
+  yield* numbers();
+}''');
+  }
 }
+
+const _stream = r'''import 'package:throws/throws.dart';
+
+@Throws(errors: {FormatException})
+Stream<int> numbers() async* {
+  throw FormatException();
+}
+''';
 
 const _run = r'''
 @rethrows

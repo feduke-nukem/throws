@@ -9,13 +9,16 @@ Future<void> writeMap(
   Map<String, Map<String, Set<String>>> entries,
   String outPath,
   String mapName,
-  OutputFormat format,
-) async {
+  OutputFormat format, {
+  String? yamlHeader,
+}) async {
   final sorted = _sorted(entries);
   final content = switch (format) {
     OutputFormat.dart => _writeDart(sorted, mapName),
     OutputFormat.json => const JsonEncoder.withIndent('  ').convert(sorted),
-    OutputFormat.yaml => _writeYaml(sorted),
+    OutputFormat.yaml =>
+      '${yamlHeader == null ? '' : '$yamlHeader\n'}'
+          '${_writeYaml(sorted)}',
   };
 
   final outFile = File(outPath);

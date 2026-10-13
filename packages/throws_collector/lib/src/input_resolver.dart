@@ -69,6 +69,10 @@ Future<_ResolvedSource> _resolveSource(
       packageRoot,
       runPubGet: runPubGet,
     ),
+    // The runner collects dependencies itself, one output per package.
+    DependenciesInputSource() => throw UnsupportedError(
+      'Dependencies are not a single input.',
+    ),
     PackageInputSource(:final name, :final version) => _resolvePackagePath(
       name,
       version,

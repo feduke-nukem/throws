@@ -11,6 +11,7 @@ const outputDirName = 'throws_collector_gen';
 const _configOutputDirKey = 'output_dir';
 const _defaultDartSdkOutput = 'dart_sdk_errors.yaml';
 const _defaultFlutterOutput = 'flutter_errors.yaml';
+const _dependenciesKey = 'dependencies';
 
 class CollectorConfig {
   final String packageRoot;
@@ -60,6 +61,13 @@ class GitInputSource extends InputSource {
   final String url;
 
   const GitInputSource(this.url);
+}
+
+/// Every package in pubspec.lock except SDK packages and [exclude].
+class DependenciesInputSource extends InputSource {
+  final Set<String> exclude;
+
+  const DependenciesInputSource({this.exclude = const {}});
 }
 
 class PackageInputSource extends InputSource {
@@ -217,6 +225,19 @@ List<CollectorInput> _loadInputs(YamlMap? yamlDoc) {
       continue;
     }
     final mapValue = entry.value as YamlMap;
+    if (key == _dependenciesKey) {
+      final exclude = mapValue['exclude'];
+      inputs.add(
+        CollectorInput(
+          outputFile: _dependenciesKey,
+          source: DependenciesInputSource(
+            exclude: {if (exclude is YamlList) ...exclude.whereType<String>()},
+          ),
+          runPubGet: false,
+        ),
+      );
+      continue;
+    }
     if (key == 'dart_sdk') {
       final outputFile = _readString(mapValue['output']);
       if (outputFile == null || outputFile.isEmpty) {
@@ -318,6 +339,13 @@ CollectorInput? _parseShorthandInput(String value) {
     return null;
   }
   final lower = trimmed.toLowerCase();
+  if (lower == _dependenciesKey) {
+    return const CollectorInput(
+      outputFile: _dependenciesKey,
+      source: DependenciesInputSource(),
+      runPubGet: false,
+    );
+  }
   if (lower == 'dart') {
     return const CollectorInput(
       outputFile: _defaultDartSdkOutput,
