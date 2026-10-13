@@ -35,7 +35,7 @@ class B implements A {
   void doSome() {
     try {
       throwing();
-    } on Exception catch (e, stackTrace) {
+    } on Exception {
       // TODO: handle error
     }
   }
@@ -44,11 +44,9 @@ class B implements A {
 void main() {
   try {
     throwing();
-  } on ArgumentError catch (e, stackTrace) {
+  } on ArgumentError {
     // TODO: handle error
-  } on RangeError catch (e, stackTrace) {
-    // TODO: handle error
-  } on Exception catch (e, stackTrace) {
+  } on Exception {
     // TODO: handle error
   }
 }
