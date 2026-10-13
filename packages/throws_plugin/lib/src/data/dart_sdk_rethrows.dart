@@ -1,0 +1,50 @@
+/// SDK members that throw what their callbacks throw, per library URI.
+///
+/// Hand-written: most of these are external or patched in the SDK, so the
+/// collector cannot find them. Lazy members (`map`, `where`, ...) throw when
+/// iterated; their errors are attributed to the call itself.
+const Map<String, List<String>> dartSdkRethrows = {
+  'dart:async': [
+    'Future.new',
+    'Future.catchError',
+    'Future.delayed',
+    'Future.doWhile',
+    'Future.forEach',
+    'Future.microtask',
+    'Future.sync',
+    'Future.then',
+    'Future.whenComplete',
+    'FutureExtensions.onError',
+    'runZoned',
+  ],
+  'dart:core': [
+    'Iterable.any',
+    'Iterable.every',
+    'Iterable.expand',
+    'Iterable.firstWhere',
+    'Iterable.fold',
+    'Iterable.forEach',
+    'Iterable.generate',
+    'Iterable.lastWhere',
+    'Iterable.map',
+    'Iterable.reduce',
+    'Iterable.singleWhere',
+    'Iterable.skipWhile',
+    'Iterable.takeWhile',
+    'Iterable.where',
+    'List.generate',
+    'List.indexWhere',
+    'List.lastIndexWhere',
+    'List.removeWhere',
+    'List.retainWhere',
+    'List.sort',
+    'Map.forEach',
+    'Map.map',
+    'Map.putIfAbsent',
+    'Map.removeWhere',
+    'Map.update',
+    'Map.updateAll',
+    'Set.removeWhere',
+    'Set.retainWhere',
+  ],
+};

@@ -48,6 +48,21 @@ Type literals.
 int singleValue(Iterable<int> values) => values.single;
 ```
 
+## Rethrowing callbacks
+
+Use `@rethrows` on a function that throws whatever its function-typed
+parameters throw. Callers then handle the errors of the closures they pass:
+
+```dart
+@rethrows
+T measure<T>(T Function() action) => action();
+
+@Throws(errors: {FormatException})
+int parse(String input) => measure(() => int.parse(input));
+```
+
+Combine it with `@Throws` for errors the function throws itself.
+
 ## Examples
 
 ### Missing annotation

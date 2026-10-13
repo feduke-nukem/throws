@@ -90,7 +90,9 @@ class NotExhaustiveTryCatchFix extends ResolvedCorrectionProducer {
     }
 
     final analysis = AnalysisCache.analysis(unit);
-    final summary = analysis.summaryFor(tryStatement.enclosingFunction);
+    final summary = analysis.summaryFor(
+      tryStatement.enclosingFunctionOrClosure,
+    );
     if (summary == null) {
       return;
     }

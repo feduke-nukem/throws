@@ -1,3 +1,14 @@
+## 2.1.0
+- Analyze closures as functions of their own.
+- Support `@rethrows` from package:throws 1.1.0: errors of closures and
+  tear-offs passed to a rethrowing function are thrown by the call.
+- New `rethrows` key in throws.yaml; `prebuilt: [dart]` marks SDK
+  higher-order members (`forEach`, `map`, `Future.then`, ...) as rethrowing.
+- New lint `no_try_catch_in_closure` for throwing calls in closures whose errors
+  are not rethrown, with try/catch and `await` fixes.
+- Fix: `unused_throws_annotation` no longer depends on the declaration order of
+  local functions that throw only untracked errors.
+
 ## 2.0.0
 - **Breaking:** throws.yaml v2: `track`, `prebuilt`, `include` and `members`
   (library URI, then member). Version 1 keys are no longer read.

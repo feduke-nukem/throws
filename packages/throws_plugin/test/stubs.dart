@@ -28,6 +28,12 @@ class Throws {
     this.errors = const {},
   });
 }
+
+const rethrows = Rethrows();
+
+class Rethrows {
+  const Rethrows();
+}
 ''';
 
 void addThrowsPackage(AnalysisRuleTest test) {

@@ -26,6 +26,8 @@ The plugin analyzes resolved AST and:
 
 - missing_throws_annotation: functions that throw must be annotated with @Throws/@throws
 - no_try_catch: calling a throwing function without a try/catch or annotation
+- no_try_catch_in_closure: calling a throwing function in a closure whose
+  errors nothing outside can catch (not passed to a `@rethrows` function)
 - not_exhaustive_try_catch: try/catch does not cover all expected errors
 - throws_annotation_mismatch: @Throws errors do not match actual thrown errors
 - introduced_throws_in_override: overrides introduce new errors without annotation
@@ -51,6 +53,8 @@ Fixes:
   - add `await` to a future-returning call inside try/catch;
   - add the errors to the enclosing `@Throws`, or annotate the enclosing
     function.
+- `no_try_catch_in_closure`: wrap the statement (or a `void` `=>` body) in
+  try/catch inside the closure, or add `await`.
 - `not_exhaustive_try_catch`: add the missing catch clauses (subtypes before
   supertypes), a default `on Object` clause, or add the errors to `@Throws`.
 - `introduced_throws_in_override`: add the errors to `@Throws` of the
@@ -90,6 +94,11 @@ throws:
     package:http/http.dart:
       get: [ClientException]
       Client.new: [ArgumentError]
+
+  # Library URI, then members that throw what their callbacks throw, like
+  # `@rethrows`.
+  rethrows:
+    package:retry/retry.dart: [retry, RetryOptions.retry]
 ```
 
 Member names follow Dart tear-off syntax: `function` for top-level functions,
@@ -100,6 +109,10 @@ Notes:
 - Prebuilt maps are heuristic only and come with no guarantees of completeness
   or accuracy.
 - Entries from `members` and `include` take precedence over prebuilt maps.
+- `prebuilt: [dart]` also marks SDK higher-order members as rethrowing:
+  `Iterable.forEach`/`map`/`where`/..., `List.sort`, `Map.putIfAbsent`,
+  `Future.then`/`catchError`/`whenComplete`, `Future.new`/`sync`/`microtask`,
+  `runZoned` and others.
 - Unknown keys are ignored. Version 1 keys (`include_prebuilt`,
   `include_paths`, `custom_errors`, `include_sdk_errors`) are no longer read.
 
@@ -119,6 +132,35 @@ thrown `FormatException`. Names from throws.yaml and prebuilt maps are resolved
 in the scope of the library that declares the member; unresolved names count as
 an unknown error, which any catch clause handles.
 
+## Closures and `@rethrows`
+
+A closure is checked as a function of its own. What happens to its errors
+depends on where it goes:
+- passed to a parameter of a function annotated with `@rethrows` (or listed
+  under `rethrows`), its errors are thrown by that call, so the caller handles
+  or declares them:
+
+  ```dart
+  @rethrows
+  T measure<T>(T Function() action) => action();
+
+  @Throws(errors: {FormatException})
+  int parse(String s) => measure(() => int.parse(s));
+  ```
+
+- anywhere else (`onPressed: () => save()`, `Timer(d, () => ...)`, a variable),
+  nothing outside can catch them: `no_try_catch_in_closure` reports throwing
+  calls inside it. An explicit `throw` in a closure is not reported.
+
+A tear-off of a known function (`list.forEach(parse)`) is treated like a closure
+that calls it. An `async` closure passed to a parameter that returns `void`
+(`forEach((x) async => ...)`) loses its errors in a dropped future, so its errors
+stay inside it.
+
+`@rethrows` is inherited by overrides and combines with `@Throws` for the
+function's own errors. Lazy members (`map`, `where`, ...) throw when iterated,
+but their callback's errors are reported at the call.
+
 ## Futures
 
 Errors of a call that returns a `Future` arrive asynchronously:
@@ -134,6 +176,9 @@ A future stored in a variable and awaited later is not tracked.
 - Casts (`as`) and null checks (`!`) are not treated as throwing: they throw
   `TypeError`, a programming error.
 - A `catch` that may `rethrow` (even conditionally) does not count as handling.
+- Function types carry no errors: a callback stored in a variable or field, or
+  passed through an unannotated parameter, loses them. A `@rethrows` function
+  rethrows all errors of its arguments, even those it catches itself.
 
 - Analysis is best-effort and depends on available type information.
 - SDK/dependency coverage depends on map data (prebuilt or collected).

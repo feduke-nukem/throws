@@ -12,6 +12,7 @@ import 'package:throws_plugin/src/fixes/throws_annotation_mismatch_fix.dart';
 import 'src/lints/introduced_throws_in_override.dart';
 import 'src/lints/missing_throws_annotation.dart';
 import 'src/lints/no_try_catch.dart';
+import 'src/lints/no_try_catch_in_closure.dart';
 import 'src/lints/not_exhaustive_try_catch.dart';
 import 'src/lints/throws_annotation_mismatch.dart';
 import 'src/lints/unused_throws_annotation.dart';
@@ -45,6 +46,14 @@ class ThrowsAnalyzerPlugin extends Plugin {
       NoTryCatch.code,
       AddToThrowsAnnotationFix.new,
     );
+
+    registry.registerWarningRule(NoTryCatchInClosure());
+    registry.registerFixForRule(
+      NoTryCatchInClosure.code,
+      NoTryCatchWithDefaultFix.new,
+    );
+    registry.registerFixForRule(NoTryCatchInClosure.code, NoTryCatchFix.new);
+    registry.registerFixForRule(NoTryCatchInClosure.code, AddAwaitFix.new);
 
     registry.registerWarningRule(NotExhaustiveTryCatch());
     registry.registerFixForRule(

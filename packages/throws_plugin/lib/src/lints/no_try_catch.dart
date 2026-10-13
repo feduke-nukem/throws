@@ -60,6 +60,7 @@ class _Visitor extends SimpleAstVisitor<void> {
     for (final summary in analysis.summaries) {
       for (final site in summary.sites) {
         if (site.isCall &&
+            !summary.isClosure &&
             !site.inTryWithCatch &&
             !summary.uncovered(site, analysis.typeSystem).isEmpty) {
           rule.reportAtNode(site.node);
@@ -238,7 +239,7 @@ ExpressionFunctionBody? _voidExpressionBody(
   final body = node.thisOrAncestorOfType<ExpressionFunctionBody>();
   final summary = AnalysisCache.analysis(
     unit,
-  ).summaryFor(node.enclosingFunction);
+  ).summaryFor(node.enclosingFunctionOrClosure);
   final returnType = summary?.element?.returnType;
   if (body == null || summary?.body != body || returnType == null) {
     return null;
@@ -254,7 +255,7 @@ ExpressionFunctionBody? _voidExpressionBody(
 /// Errors from calls in [scope] that the enclosing function does not declare.
 ErrorSet _uncoveredErrors(CompilationUnit unit, AstNode scope) {
   final analysis = AnalysisCache.analysis(unit);
-  final summary = analysis.summaryFor(scope.enclosingFunction);
+  final summary = analysis.summaryFor(scope.enclosingFunctionOrClosure);
   if (summary == null) {
     return ErrorSet.empty;
   }

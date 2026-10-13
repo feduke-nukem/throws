@@ -77,6 +77,24 @@ void f() {
     );
   }
 
+  void test_no_lint_when_rethrown_closure_throws_untracked() async {
+    newFile('$testPackageRootPath/throws.yaml', '''
+throws:
+  track:
+    - exception
+''');
+    await assertNoDiagnostics(
+      r'''import 'package:throws/throws.dart';
+@rethrows
+void run(void Function() action) => action();
+
+@Throws(errors: {ArgumentError})
+void f() {
+  run(() => throw ArgumentError());
+}''',
+    );
+  }
+
   void test_no_lint_when_calling_throwing_function() async {
     await assertNoDiagnostics(
       r'''import 'package:throws/throws.dart';

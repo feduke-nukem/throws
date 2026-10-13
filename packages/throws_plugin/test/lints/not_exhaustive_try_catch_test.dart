@@ -184,4 +184,47 @@ void f() {
 }''',
     );
   }
+
+  void test_reports_in_closure() async {
+    const code = r'''import 'package:throws/throws.dart';
+@Throws(errors: {FormatException, ArgumentError})
+void boom() {
+  throw FormatException();
+}
+
+void later(void Function() action) {}
+
+void f() {
+  later(() {
+    try {
+      boom();
+    } on FormatException {
+      // handle
+    }
+  });
+}''';
+    await assertDiagnostics(code, [lint(code.lastIndexOf('boom'), 4)]);
+  }
+
+  void test_no_lint_in_rethrown_closure() async {
+    await assertNoDiagnostics(r'''import 'package:throws/throws.dart';
+@Throws(errors: {FormatException, ArgumentError})
+void boom() {
+  throw FormatException();
+}
+
+@rethrows
+void run(void Function() action) => action();
+
+@Throws(errors: {ArgumentError})
+void f() {
+  run(() {
+    try {
+      boom();
+    } on FormatException {
+      // handle
+    }
+  });
+}''');
+  }
 }

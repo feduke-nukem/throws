@@ -1,3 +1,6 @@
+## 1.1.0
+- Add `@rethrows`: the function throws whatever its function-typed parameters throw.
+
 ## 1.0.0
 - Stable release
 

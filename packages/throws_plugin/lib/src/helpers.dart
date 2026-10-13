@@ -6,9 +6,16 @@ import 'package:throws_plugin/src/data/error_set.dart';
 import 'package:throws_plugin/src/data/throws_annotation.dart';
 
 /// Whether [annotation] is `@Throws(...)` or `@throws` from package:throws.
-bool isThrowsAnnotation(ElementAnnotation annotation) {
+bool isThrowsAnnotation(ElementAnnotation annotation) =>
+    _isThrowsPackageAnnotation(annotation, ThrowsAnnotation.nameCapitalized);
+
+/// Whether [annotation] is `@rethrows` from package:throws.
+bool isRethrowsAnnotation(ElementAnnotation annotation) =>
+    _isThrowsPackageAnnotation(annotation, ThrowsAnnotation.rethrowsClass);
+
+bool _isThrowsPackageAnnotation(ElementAnnotation annotation, String name) {
   final element = annotation.computeConstantValue()?.type?.element;
-  if (element == null || element.name != ThrowsAnnotation.nameCapitalized) {
+  if (element == null || element.name != name) {
     return false;
   }
   final uri = element.library?.uri;
